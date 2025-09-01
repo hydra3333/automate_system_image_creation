@@ -613,10 +613,10 @@ call :RunPS ^
   "          (Join-Path $p.FullName 'Media Cache\*')," ^
   "          (Join-Path $p.FullName 'Code Cache\*')," ^
   "          (Join-Path $p.FullName 'GPUCache\*')," ^
-  "          (Join-Path $p.FullName 'Network\*')," ^
   "          (Join-Path $p.FullName 'Service Worker\CacheStorage\*')," ^
   "          (Join-Path $p.FullName 'Service Worker\ScriptCache\*')" ^
   "        )" ^
+  "        # removed (Join-Path $p.FullName 'Network\*'),  # as network houses cookies, deleting cookies logs you out of all browser websites" ^
   "        foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }" ^
   "        $cleaned++" ^
   "      }" ^
@@ -691,7 +691,6 @@ REM ============================================================================
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
 REM --- Empty Recycle Bins
-
 REM no parameters for this, call :RunPS directly
 call :RunPS ^
   "$ErrorActionPreference = 'Stop'" ^
