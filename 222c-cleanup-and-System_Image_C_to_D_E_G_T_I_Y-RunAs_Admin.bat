@@ -119,18 +119,21 @@ call :enable_System_Protection_on_C
 echo ==============================================================
 timeout /t 2 >nul
 
+:: --- Resize Shadow Storage limit to ---
+echo ==============================================================
+set "shadow_storage_limit=100GB"
+echo Resizing shadow storage limit to %shadow_storage_limit% ...
+REM powershell -ExecutionPolicy Bypass -NoProfile -Command "vssadmin Resize ShadowStorage /For=C: /On=C: /MaxSize=%shadow_storage_limit%"
+call :resize_shadow_storage_limit_on_C  "%shadow_storage_limit%"
+echo ==============================================================
+timeout /t 2 >nul
+
+
 
 PAUSE
 exit
 
 
-:: --- Resize Shadow Storage limit to 100GB ---
-echo ==============================================================
-echo Resizing shadow storage limit to 100GB ...
-echo powershell -ExecutionPolicy Bypass -NoProfile -Command "vssadmin Resize ShadowStorage /For=C: /On=C: /MaxSize=100GB"
-powershell -ExecutionPolicy Bypass -NoProfile -Command "vssadmin Resize ShadowStorage /For=C: /On=C: /MaxSize=100GB"
-echo ==============================================================
-timeout /t 2 >nul
 
 REM --- Delete all existing Restore Points on C: due to a long time limitation setting for Creating a new Restore Point on C: ---
 echo ==============================================================
@@ -818,12 +821,12 @@ call :RunPS ^
   "    $exitCode = $process.ExitCode" ^
   "    Check-Abort" ^
   "    if ($exitCode -ne 0) {" ^
-  "        Abort ""vssadmin List remaining restore points on C: drive failed with exit code: $exitCode"" $EXIT.WBADMIN_FAIL" ^
+  "        Abort ""vssadmin List remaining restore points on C: drive failed with exit code: $exitCode"" $EXIT.VSS_FAIL" ^
   "    }" ^
   "    Check-Abort" ^
   "    Write-Host 'Listed remaining restore points on C: drive successfully.' -ForegroundColor Green" ^
   "} catch {" ^
-  "    Abort ""WARNING ONLY: Failed to List remaining restore points on C: drive : $($_.Exception.Message)"" $EXIT.WBADMIN_FAIL" ^
+  "    Abort ""WARNING ONLY: Failed to List remaining restore points on C: drive : $($_.Exception.Message)"" $EXIT.VSS_FAIL" ^
   "}" ^
   "Check-Abort" ^
   "#Write-Host 'List remaining restore points on C: drive completed.' -ForegroundColor Cyan" ^
@@ -909,6 +912,97 @@ REM ============================================================================
 
 REM ================================================================================================================
 REM ================================================================================================================
+:resize_shadow_storage_limit_on_C
+@setlocal ENABLEEXTENSIONS
+@setlocal ENABLEDELAYEDEXPANSION
+:: --- Resize Shadow Storage limit on C: ---
+set "shadow_storage_limit=%~1"
+call :resize_shadow_storage_limit_using_powerscript "%shadow_storage_limit%"
+set "RC=%ERRORLEVEL%"
+if "%RC%" NEQ "0" (
+  echo ERROR: Resize Shadow Storage limit on C: failed code %RC%
+  exit %RC%
+)
+echo Resize Shadow Storage limit on C: completed successfully.
+goto :eof
+
+:resize_shadow_storage_limit_using_powerscript
+@setlocal ENABLEEXTENSIONS
+@setlocal ENABLEDELAYEDEXPANSION
+rem Usage: call :resize_shadow_storage_limit_using_powerscript "100GB"
+rem %~1 = Resize Shadow Storage limit eg 100GB
+set "RUNPS_ARG1=%~1"
+REM replace unfortunately dos-generated double carats with a single carat
+set "RUNPS_ARG1=%RUNPS_ARG1:^^=^%"
+rem Default values if empty
+if "%RUNPS_ARG1%"=="" set "RUNPS_ARG1=100GB"
+call :RunPS_debug ^
+  "$shadow_storage_limit = $env:RUNPS_ARG1" ^
+  "$ErrorActionPreference = 'Stop'" ^
+  "$EXIT = @{" ^
+  "  OK=0; GENERIC=1; BAD_ARGS=2; PRECHECK=3; NO_SPACE=4; NOT_NTFS=5; REFUSED=6;" ^
+  "  VSS_FAIL=7; WBADMIN_FAIL=8; FORMAT_FAIL=9;" ^
+  "  CANCEL_CTRL_C=90; CANCEL_FLAG=91; CANCEL_KEY=92; UNKNOWN=99" ^
+  "}" ^
+  "function Abort([string]$msg, [int]$code = $EXIT.GENERIC) {" ^
+  "    if ($msg) { Write-Error $msg }" ^
+  "    exit $code" ^
+  "}" ^
+  "$script:UserCancelled = $false" ^
+  "Register-EngineEvent -SourceIdentifier ConsoleCancelEvent -Action {" ^
+  "    $script:UserCancelled = $true" ^
+  "    $eventArgs.Cancel = $true" ^
+  "    Write-Warning 'CTRL+C detected - will abort at next checkpoint...'" ^
+  "} | Out-Null" ^
+  "function Check-Abort {" ^
+  "    if ($script:UserCancelled) { Abort 'Cancelled by user (Ctrl+C).' $EXIT.CANCEL_CTRL_C }" ^
+  "    try {" ^
+  "        if ([Console]::KeyAvailable) {" ^
+  "            $k = [Console]::ReadKey($true)" ^
+  "            if ($k.Key -eq 'Q') { Abort 'Cancelled by user (Q).' $EXIT.CANCEL_KEY }" ^
+  "        }" ^
+  "    } catch { <# non-interactive host - ignore #> }" ^
+  "}" ^
+  "function Require-Admin([string]$Why = 'This step') {" ^
+  "    $isAdmin = (New-Object Security.Principal.WindowsPrincipal(" ^
+  "                    [Security.Principal.WindowsIdentity]::GetCurrent()" ^
+  "                )).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" ^
+  "    if (-not $isAdmin) {" ^
+  "        Abort ""$Why requires Administrator. Re-run elevated."" $EXIT.PRECHECK" ^
+  "    }" ^
+  "}" ^
+  "# ****************************** CODE ******************************" ^
+  "Require-Admin 'Resize Shadow Storage limit on C: drive operation'" ^
+  "Check-Abort" ^
+  "Write-Host ""Starting Resize Shadow Storage limit on C: drive ..."" -ForegroundColor Yellow" ^
+  "try {" ^
+  "    $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList ""Resize"", ""ShadowStorage"", ""/for=C:"", ""/On=C:"", ""/MaxSize=$shadow_storage_limit"" -Wait -PassThru -NoNewWindow" ^
+  "    $exitCode = $process.ExitCode" ^
+  "    Check-Abort" ^
+  "    if ($exitCode -ne 0) {" ^
+  "        Abort ""vssadmin Resize Shadow Storage limit on C: drive failed with exit code: $exitCode"" $EXIT.VSS_FAIL" ^
+  "    }" ^
+  "    Write-Host ""vssadmin Resize Shadow Storage limit on C: drive completed successfully."" -ForegroundColor Green" ^
+  "} catch {" ^
+  "    Abort ""ERROR: Failed to execute vssadmin Resize Shadow Storage limit on C: drive : $($_.Exception.Message)"" $EXIT.VSS_FAIL" ^
+  "}" ^
+  "Check-Abort" ^
+  "exit $EXIT.OK"
+set "RC=%ERRORLEVEL%"
+exit /b %RC%
+REM ================================================================================================================
+REM ================================================================================================================
+
+
+
+
+
+
+
+
+
+REM ================================================================================================================
+REM ================================================================================================================
 :do_system_image_of_C_drive
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
@@ -934,7 +1028,7 @@ REM echo wbadmin get versions -backuptarget:"%~1" -machine:"%COMPUTERNAME%"
 REM wbadmin get versions -backuptarget:"%~1" -machine:"%COMPUTERNAME%"
 REM echo ==============================================================
 REM call :show_latest_system_backup_version_for_current_machine_on_target "%~1"
-REM goto :eof
+goto :eof
 
 :do_system_image_of_C_drive_using_powerscript
 @setlocal ENABLEEXTENSIONS
