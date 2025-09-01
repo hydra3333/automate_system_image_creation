@@ -616,8 +616,15 @@ call :RunPS ^
   "          (Join-Path $p.FullName 'Service Worker\CacheStorage\*')," ^
   "          (Join-Path $p.FullName 'Service Worker\ScriptCache\*')" ^
   "        )" ^
-  "        # removed (Join-Path $p.FullName 'Network\*'),  # as network houses cookies, deleting cookies logs you out of all browser websites" ^
   "        foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }" ^
+  "        # as network houses cookies, deleting cookies logs you out of all browser websites" ^
+  "        # Network: clear everything except cookies & key state" ^
+  "        #$net = Join-Path $p.FullName 'Network'" ^
+  "        #if (Test-Path $net) {" ^
+  "        #  Get-ChildItem $net -Force -ErrorAction SilentlyContinue |" ^
+  "        #    Where-Object { $_.Name -notlike 'Cookies*' -and $_.Name -ne 'TransportSecurity' -and $_.Name -notlike 'Reporting and NEL*' -and $_.Name -ne 'Network Persistent State' } |" ^
+  "        #    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" ^
+  "        #}" ^
   "        $cleaned++" ^
   "      }" ^
   "      Write-Host ('  Chrome: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green" ^
@@ -643,8 +650,15 @@ call :RunPS ^
   "          (Join-Path $p.FullName 'Service Worker\CacheStorage\*')," ^
   "          (Join-Path $p.FullName 'Service Worker\ScriptCache\*')" ^
   "        )" ^
-  "        # removed (Join-Path $p.FullName 'Network\*'),  # as network houses cookies, deleting cookies logs you out of all browser websites" ^
   "        foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }" ^
+  "        # as network houses cookies, deleting cookies logs you out of all browser websites" ^
+  "        # Network: clear everything except cookies & key state" ^
+  "        #$net = Join-Path $p.FullName 'Network'" ^
+  "        #if (Test-Path $net) {" ^
+  "        #  Get-ChildItem $net -Force -ErrorAction SilentlyContinue |" ^
+  "        #    Where-Object { $_.Name -notlike 'Cookies*' -and $_.Name -ne 'TransportSecurity' -and $_.Name -notlike 'Reporting and NEL*' -and $_.Name -ne 'Network Persistent State' } |" ^
+  "        #    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" ^
+  "        #}" ^
   "        $cleaned++" ^
   "      }" ^
   "      Write-Host ('  Edge: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green" ^
