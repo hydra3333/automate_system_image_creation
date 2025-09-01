@@ -283,7 +283,7 @@ REM • Always include -machine when the target contains multiple PCs, and quote
 REM • Version identifier granularity is minutes; folders include seconds.
 REM ===================================================================================================
 REM
-call :RunPS ^
+call :RunPS_debug ^
   "$TargetDrive = $env:RUNPS_ARG1" ^
   "$HeadroomPercent = $env:RUNPS_ARG2" ^
   "Write-Host ('Starting pre-checks ... Target: {0}  Headroom: {1}%%%%' -f $TargetDrive, $HeadroomPercent) -ForegroundColor Cyan" ^
@@ -379,8 +379,9 @@ call :RunPS ^
   "Write-Host 'Target appears large enough for this backup (including headroom).' -ForegroundColor Green" ^
   "Check-Abort" ^
   "Unregister-Event -SourceIdentifier ConsoleCancelEvent -ErrorAction SilentlyContinue | Out-Null" ^
-  "exit $EXIT.OK"
-set "RC=%ERRORLEVEL%"
+  "exit $EXIT.OK" ^
+"precheck_target_drive_using_powerscript" TargetDrive HeadroomPercent
+set "RC=%ERRORLEVEL%" 
 exit /b %RC%
 REM ================================================================================================================
 REM ================================================================================================================
@@ -390,8 +391,8 @@ REM ============================================================================
 :cleanup_c_windows_temp
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
-REM no parameters for this, call :RunPS directly
-call :RunPS ^
+REM no parameters for this, call :RunPS_debug directly
+call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
   "$EXIT = @{" ^
@@ -449,7 +450,8 @@ call :RunPS ^
   "    Write-Host ""WARNING ONLY: $tempPath folder unavailable for cleaning"" -ForegroundColor Yellow" ^
   "}" ^
   "Check-Abort" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"cleanup_c_windows_temp"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -460,8 +462,8 @@ REM ============================================================================
 :cleanup_c_temp_for_every_user
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
-REM no parameters for this, call :RunPS directly
-call :RunPS ^
+REM no parameters for this, call :RunPS_debug directly
+call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
   "$EXIT = @{" ^
@@ -527,7 +529,8 @@ call :RunPS ^
   "}" ^
   "Write-Host ""TEMP cleanup completed for all users"" -ForegroundColor Cyan" ^
   "Check-Abort" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"cleanup_c_temp_for_every_user"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -555,8 +558,8 @@ REM       Images, scripts, and style sheets stored locally to speed up browsing
 REM       Disk-based "temporary blobs" and site assets
 REM       These are safe to delete and do not affect functionality or user data.
 
-REM no parameters for this, call :RunPS directly
-call :RunPS ^
+REM no parameters for this, call :RunPS_debug directly
+call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
   "$EXIT = @{" ^
@@ -696,7 +699,8 @@ call :RunPS ^
   "}" ^
   "Check-Abort" ^
   "Write-Host 'Browser cache cleanup completed.' -ForegroundColor Cyan" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"clear_browser_data_for_all_users"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -708,8 +712,8 @@ REM ============================================================================
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
 REM --- Empty Recycle Bins
-REM no parameters for this, call :RunPS directly
-call :RunPS ^
+REM no parameters for this, call :RunPS_debug directly
+call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
   "$EXIT = @{" ^
@@ -766,7 +770,9 @@ call :RunPS ^
   "}" ^
   "Check-Abort" ^
   "Write-Host 'Emptying Recycle Bins on all attached drives completed.' -ForegroundColor Cyan" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"empty_recycle_bins"
+set "RC=%ERRORLEVEL%"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -776,8 +782,8 @@ REM ============================================================================
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
 REM --- List remaining restore points on C:
-REM no parameters for this, call :RunPS directly
-call :RunPS ^
+REM no parameters for this, call :RunPS_debug directly
+call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
   "$EXIT = @{" ^
@@ -830,7 +836,8 @@ call :RunPS ^
   "}" ^
   "Check-Abort" ^
   "#Write-Host 'List remaining restore points on C: drive completed.' -ForegroundColor Cyan" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"list_remaining_restore_points_on_C"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -842,7 +849,7 @@ REM ============================================================================
 @setlocal ENABLEEXTENSIONS
 @setlocal ENABLEDELAYEDEXPANSION
 REM --- Enable System Protection on C:
-REM no parameters for this, call :RunPS directly
+REM no parameters for this, call :RunPS_debug directly
 call :RunPS_debug ^
   "$ErrorActionPreference = 'Stop'" ^
   "$ProgressPreference = 'SilentlyContinue'" ^
@@ -904,7 +911,8 @@ call :RunPS_debug ^
   "}" ^
   "Check-Abort" ^
   "Write-Host 'Enable System Protection on C: drive completed.' -ForegroundColor Cyan" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"enable_System_Protection_on_C"
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -987,7 +995,8 @@ call :RunPS_debug ^
   "    Abort ""ERROR: Failed to execute vssadmin Resize Shadow Storage limit on C: drive : $($_.Exception.Message)"" $EXIT.VSS_FAIL" ^
   "}" ^
   "Check-Abort" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"resize_shadow_storage_limit_using_powerscript" shadow_storage_limit
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM ================================================================================================================
@@ -1040,7 +1049,7 @@ REM replace unfortunately dos-generated double carats with a single carat
 set "RUNPS_ARG1=%RUNPS_ARG1:^^=^%"
 rem Default values if empty
 if "%RUNPS_ARG1%"=="" set "RUNPS_ARG1=D:"
-call :RunPS ^
+call :RunPS_debug ^
   "$TargetDrive = $env:RUNPS_ARG1" ^
   "$ErrorActionPreference = 'Stop'" ^
   "$EXIT = @{" ^
@@ -1092,7 +1101,8 @@ call :RunPS ^
   "    Abort ""ERROR: Failed to execute wbadmin System Image Backup : $($_.Exception.Message)"" $EXIT.WBADMIN_FAIL" ^
   "}" ^
   "Check-Abort" ^
-  "exit $EXIT.OK"
+  "exit $EXIT.OK" ^
+"do_system_image_of_C_drive_using_powerscript" TargetDrive
 set "RC=%ERRORLEVEL%"
 exit /b %RC%
 REM  "try {" ^
@@ -1311,7 +1321,7 @@ REM ============================================================================
 REM ================================================================================================================
 :: -------------------------------------------------------------------------------
 :: :RunPS — write a temp .ps1 from given lines, then run it (auto-escapes special things for CMD)
-:: Usage:  call :RunPS "line 1" "line 2" "line 3" ...
+:: Usage:  call :RunPS_debug "line 1" "line 2" "line 3" ...
 :: Notes:
 ::   • Each argument becomes one line in the .ps1
 ::   • Use %%%% to emit a single % in ps code lines (same rule for parameters)
@@ -1328,7 +1338,7 @@ REM ============================================================================
 ::  )
 ::  etc
 ::
-::  REM 2. ----- THE FUNCTION TO CREATE THE POWERSHELL WITH THE PARAMETERS PASSED, AND CALL :RunPS TO RUN IT
+::  REM 2. ----- THE FUNCTION TO CREATE THE POWERSHELL WITH THE PARAMETERS PASSED, AND call :RunPS_debug TO RUN IT
 ::  :some_function_using_a_powershell_script
 ::  echo === a_specific_function_not_in_an_IF - Running PowerShell via :RunPS ... not inside IF ===
 ::  rem expose args for PowerShell to read safely (order preserved)
@@ -1340,7 +1350,7 @@ REM ============================================================================
 ::  set "RUNPS_ARG1=%RUNPS_ARG1:^^=^%"
 ::  set "RUNPS_ARG2=%RUNPS_ARG2:^^=^%"
 ::  set "RUNPS_ARG3=%RUNPS_ARG3:^^=^%"
-::  call :RunPS ^
+::  call :RunPS_debug ^
 ::      "Write-Host ('hello from PowerShell (in a label, not in IF)')" ^
 ::      "Write-Host ('Parameter1=<' + $env:RUNPS_ARG1 + '>')" ^
 ::      "Write-Host ('Parameter2=<' + $env:RUNPS_ARG2 + '>')" ^
@@ -1402,10 +1412,12 @@ REM no please do NOT do this : set "L=%L:^^=^%"
 shift
 goto __rp_loop_debug
 :__rp_go_debug
-echo ---------------------------------------------------------
+echo #---------------------------------------------------------
+echo "%~2" ( %~3,  %~4,  %~5,  %~6,  %~7 ) {
 type "%TMPPS%"
-echo ---------------------------------------------------------
-powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%"
+echo }
+echo #---------------------------------------------------------
+REM powershell -NoProfile -ExecutionPolicy Bypass -File "%TMPPS%"
 set "RC=%ERRORLEVEL%"
 del "%TMPPS%" >nul 2>&1
 endlocal & exit /b %RC%
