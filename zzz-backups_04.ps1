@@ -681,6 +681,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
 
     try {
         Trace "Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow"
+        $exitCode = 0
         #$proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
         #$exitCode = $proc.ExitCode
     } catch {
