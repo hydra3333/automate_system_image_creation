@@ -24,16 +24,29 @@
     - Headroom_PCT is invalid
     - No valid drives remain after validation
 #>
-[CmdletBinding()]   # optional but nice
+[CmdletBinding(DefaultParameterSetName='Default')]
 param(
     [Parameter(Mandatory = $true)]
     [string] $Target_Drives_List,
 
     [Parameter(Mandatory = $false)]
     [int]    $Headroom_PCT = 30,
-    [switch] $NoCleanupBeforehand,
+    
+    [Parameter(ParameterSetName='Do')]      # by putting each switch in a different set, you make them mutually exclusive
+    [switch]$CleanupBeforehand,
+    [Parameter(ParameterSetName='Skip')]    # by putting each switch in a different set, you make them mutually exclusive
+    [switch]$NoCleanupBeforehand,
+    
     [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag"
 )
+
+# FInd out whether to cleanup beforehand via mutually exclusive switches, defaulting to Do (true)
+$DoCleanupBeforehand = switch ($PSCmdlet.ParameterSetName) {
+  'Do'    { $true }
+  'Skip'  { $false }
+  default { $true }   # default behavior when neither switch is supplied
+}
+
 # Gate for our Trace Helpers
 $script:IsVerbose = $VerbosePreference -eq 'Continue'
 
