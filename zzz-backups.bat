@@ -13,8 +13,8 @@ if %EL% neq 0 (
     echo This script is running as Administrator. Great!
 )
 
-REM powershell -NoProfile -ExecutionPolicy Bypass -File "C:\000-Essential-tasks\zzz-backups_05.ps1" -Target_Drives_List "D: E: F: G: T: I: Y:" -Headroom_PCT 35 -Verbose
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\000-Essential-tasks\zzz-backups_05.ps1" -Target_Drives_List "D: E: F: G: T: I: Y:" -Headroom_PCT 35
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\000-Essential-tasks\zzz-backups_05.ps1" -Target_Drives_List "D: E: F: G: T: I: Y:" -Headroom_PCT 35 -Verbose
+REM powershell -NoProfile -ExecutionPolicy Bypass -File "C:\000-Essential-tasks\zzz-backups_05.ps1" -Target_Drives_List "D: E: F: G: T: I: Y:" -Headroom_PCT 35
 
 pause
 goto :eof

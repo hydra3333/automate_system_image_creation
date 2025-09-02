@@ -380,7 +380,7 @@ function cleanup_c_windows_temp {
             $beforeSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             Write-Host "$tempPath ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB)" -NoNewline
             Trace "Remove-Item -Path ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
-            #Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
             $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             $freed = $beforeSize - $afterSize
             Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
@@ -418,7 +418,7 @@ function cleanup_c_temp_for_every_user {
                 $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
                 Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
                 Trace "Remove-Item ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
-                #Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
                 Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
@@ -470,7 +470,7 @@ function clear_browser_data_for_all_users {
             )
             foreach($pp in $paths){
                 Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
-                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             # as network houses cookies, deleting cookies logs you out of all browser websites
             # Network: clear everything except cookies & key state
@@ -507,7 +507,7 @@ function clear_browser_data_for_all_users {
             )
             foreach($pp in $paths){
                 Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
-                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             # as network houses cookies, deleting cookies logs you out of all browser websites
             # Network: clear everything except cookies & key state
@@ -542,7 +542,7 @@ function clear_browser_data_for_all_users {
             )
             foreach($pp in $paths){
                 Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
-                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             $cleaned++
           }
@@ -561,7 +561,7 @@ function empty_recycle_bins {
     try {
         Write-Host 'Emptying Recycle Bin for C: drive' -ForegroundColor White
         Trace "Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue"
-        #Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
+        Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
     } catch {
         Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
@@ -571,7 +571,7 @@ function empty_recycle_bins {
     try {
         Write-Host 'Emptying Recycle Bins on all attached drives' -ForegroundColor White
         Trace "Clear-RecycleBin -Force -ErrorAction Continue"
-        #Clear-RecycleBin -Force -ErrorAction Continue
+        Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
     } catch {
         Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
@@ -684,9 +684,8 @@ function run_disk_cleanup_using_cleanmgr_profile {
 
     try {
         Trace "Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow"
-        $exitCode = 0
-        #$proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
-        #$exitCode = $proc.ExitCode
+        $proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
+        $exitCode = $proc.ExitCode
     } catch {
         Write-Warning "WARNING ONLY: Failed to run_disk_cleanup_using_cleanmgr_profile: {0}" -f $_.Exception.Message
         return $true
@@ -841,12 +840,12 @@ Write-Host ''
 Check-Abort
 
 if ($DoCleanupBeforehand) {
-    return_status = cleanup_c_windows_temp
-    return_status = cleanup_c_temp_for_every_user
-    return_status = clear_browser_data_for_all_users
-    return_status = empty_recycle_bins
-    #return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
-    return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C')
+    $return_status = cleanup_c_windows_temp
+    $return_status = cleanup_c_temp_for_every_user
+    $return_status = clear_browser_data_for_all_users
+    $return_status = empty_recycle_bins
+    #$return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
+    $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C')
 }
 
 Check-Abort
