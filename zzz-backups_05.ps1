@@ -673,9 +673,11 @@ function run_disk_cleanup_using_cleanmgr_profile {
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
-            #$before[("$letter:")] = [Int64]$psd.Free
             $before["${letter}:"] = [int64]$psd.Free
-        } catch { }
+        } catch {
+            Write-Warning "WARNING ONLY: Failed to measure free space before cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message
+            return $true
+        }
     }
     $argList = @("/sagerun:$SageRunId")
     Trace ("{0} {1}" -f $cmd.Source, ($argList -join ' '))
@@ -696,9 +698,11 @@ function run_disk_cleanup_using_cleanmgr_profile {
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
-            #$after[("$letter:")] = [Int64]$psd.Free
-            $after ["${letter}:"] = [int64]$psd.Free
-        } catch { }
+            $after["${letter}:"] = [int64]$psd.Free
+        } catch {
+            Write-Warning "WARNING ONLY: Failed to measure free space after cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message
+            return $true
+        }
     }
     # Report freed space
     $rows = foreach ($k in $before.Keys) {
@@ -837,12 +841,12 @@ Write-Host ''
 Check-Abort
 
 if ($DoCleanupBeforehand) {
-    cleanup_c_windows_temp
-    cleanup_c_temp_for_every_user
-    clear_browser_data_for_all_users
-    empty_recycle_bins
-    #run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
-    run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C')
+    return_status = cleanup_c_windows_temp
+    return_status = cleanup_c_temp_for_every_user
+    return_status = clear_browser_data_for_all_users
+    return_status = empty_recycle_bins
+    #return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
+    return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C')
 }
 
 Check-Abort
