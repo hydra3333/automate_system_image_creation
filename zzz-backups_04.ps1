@@ -24,7 +24,7 @@
     - Headroom_PCT is invalid
     - No valid drives remain after validation
 #>
-[CmdletBinding(DefaultParameterSetName='Default')]
+[CmdletBinding(SupportsShouldProcess=$true, DefaultParameterSetName='Do')
 param(
     [Parameter(Mandatory = $true)]
     [string] $Target_Drives_List,
@@ -562,7 +562,8 @@ function empty_recycle_bins {
         #Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
     } catch {
-        Abort "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
+        Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
+        return $false
     }
     Check-Abort
     try {
@@ -571,7 +572,8 @@ function empty_recycle_bins {
         #Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
     } catch {
-        Abort "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
+        Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
+        return $false
     }
     Write-Host 'Emptying Recycle Bins on all attached drives completed.' -ForegroundColor Cyan
     Check-Abort
