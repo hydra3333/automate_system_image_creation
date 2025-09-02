@@ -30,8 +30,10 @@ param(
     [string] $Target_Drives_List,
 
     [Parameter(Mandatory = $false)]
+    [ValidateRange(0,500)]
     [int]    $Headroom_PCT = 30,
     
+    # mutually exclusive cleanup toggles
     [Parameter(ParameterSetName='Do')]      # by putting each switch in a different set, you make them mutually exclusive
     [switch]$CleanupBeforehand,
     [Parameter(ParameterSetName='Skip')]    # by putting each switch in a different set, you make them mutually exclusive
@@ -246,7 +248,7 @@ function Test-TargetDrive {
 
     if ($exists -and $ready -and (-not $forbidden) -and $isNTFS) {
         $valid  = $true
-        $reason = @("Drive $Drive looks OK.")
+        $reason = @("Drive $Drive structurally valid.")
     }
 
     $result = [pscustomobject]@{
@@ -678,10 +680,12 @@ function run_disk_cleanup_using_cleanmgr_profile {
     Trace ("{0} {1}" -f $cmd.Source, ($argList -join ' '))
 
     try {
-        $proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
-        $exitCode = $proc.ExitCode
+        Trace "Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow"
+        #$proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
+        #$exitCode = $proc.ExitCode
     } catch {
-        Abort ("Failed to start cleanmgr: {0}" -f $_.Exception.Message) $EXIT.GENERIC
+        Write-Warning "WARNING ONLY: Failed to run_disk_cleanup_using_cleanmgr_profile: {0}" -f $_.Exception.Message
+        return $true
     }
     Check-Abort
     # Measure free space after
@@ -716,10 +720,6 @@ function run_disk_cleanup_using_cleanmgr_profile {
         return $false
     }
 }
-
-
-
-
 
 
 
@@ -872,4 +872,5 @@ Check-Abort
 #     Check-Abort
 # }
 
+Unregister-Event -SourceIdentifier ConsoleCancelEvent -ErrorAction SilentlyContinue | Out-Null
 exit $EXIT.OK
