@@ -676,9 +676,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
     Trace ("{0} {1}" -f $cmd.Source, ($argList -join ' '))
 
     try {
-        $proc = Start-Process -FilePath $cmd.Source `
-                              -ArgumentList $argList `
-                              -Wait -PassThru -NoNewWindow
+        $proc = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
         $exitCode = $proc.ExitCode
     } catch {
         Abort ("Failed to start cleanmgr: {0}" -f $_.Exception.Message) $EXIT.GENERIC
