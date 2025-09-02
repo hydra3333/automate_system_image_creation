@@ -12,6 +12,9 @@
 .PARAMETER Headroom_PCT
   Optional integer percentage of headroom applied on top of estimated image size.
 
+.PARAMETER [switch] $NoCleanupBeforehand
+  Optional switch indicating whether to cleanup TEMP folders, cache folders, restore points, etc, before doing the System Image Backup
+
 .PARAMETER Verbose (a builtin)
   Optional boolean. When true, prints detailed flow + object dumps.
 
@@ -28,6 +31,7 @@ param(
 
     [Parameter(Mandatory = $false)]
     [int]    $Headroom_PCT = 30,
+    [switch] $NoCleanupBeforehand,
     [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag"
 )
 # Gate for our Trace Helpers
@@ -448,6 +452,9 @@ Write-Host ('Valid Target Drives (with space): {0}' -f ($validTargets -join ', '
 Write-Host ''
 
 Check-Abort
+
+if (-not $NoCleanupBeforehand) 
+}
 
 # ============================ Where to add work =============================
 # At this point you have:
