@@ -50,15 +50,19 @@ $DoCleanupBeforehand = switch ($PSCmdlet.ParameterSetName) {
 }
 
 # Gate for our Trace Helpers
+# 1. from commandline -Verbose
 $script:IsVerbose = $VerbosePreference -eq 'Continue'
+# 2. our own flag to edit in this script, useful during development/debugging
+$script:enable_trace = $true
+#$script:want_trace = $false
 
 # Trace helpers
 function Trace([string]$Message) {
-    if ($script:IsVerbose) { Write-Host "[VERBOSE] $Message" -ForegroundColor DarkGray }
+    if ($script:IsVerbose -or $script:enable_trace) { Write-Host "[VERBOSE] $Message" -ForegroundColor DarkGray }
 }
 
 function Dump-Object($Object, [string]$Label = "") {
-    if (-not $script:IsVerbose) { return }
+    if (-not ($script:IsVerbose -or $script:enable_trace) { return }
     if ($Label) { Write-Host "[VERBOSE] $Label =" -ForegroundColor DarkGray }
     try {
         $Object | Format-List * | Out-String -Width 500 |
