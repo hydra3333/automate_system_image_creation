@@ -389,35 +389,46 @@ Write-Host ''
 
 # 5) Validate each drive + free-space test
 $validationResults = foreach ($d in $targets) {
-    Trace ("---- Validating {0} ----" -f $d)
-
     $vr = Test-TargetDrive -Drive $d
     $fr = $null
     if ($vr.Valid) {
         $fr = Test-FreeSpaceForImage -Drive $d -RequiredBytes $estimate.RequiredWithHeadroom_Bytes
     }
-    # Merge for a friendly row 
-    $row = [pscustomobject]@{
-        Drive        = $vr.Drive
-        Valid        = $vr.Valid
-        Reason       = $vr.Message
-        FileSystem   = $vr.FileSystem
-        FreeGB       = if ($vr.FreeBytes -ge 0) { [math]::Round($vr.FreeBytes / 1GB,1) } else { $null }
-        Fits         = if ($fr) { $fr.Fits } else { $false }
-        SpaceNote    = if ($fr) { ('Need {0:N1} GB' -f ($fr.RequiredBytes/1GB)) } else { $null }
-    }
 
-    Dump-Object $row "Validation row ($d)"
-    $row
+    $haveGB = if ($vr.FreeBytes -ge 0) { [math]::Round($vr.FreeBytes / 1GB, 1) } else { $null }
+    $needGB = if ($fr) { [math]::Round($fr.RequiredBytes / 1GB, 1) } else { $null }
+
+    # Build a clearer reason
+    $reason =
+        if (-not $vr.Valid) {
+            $vr.Message
+        }
+        elseif ($fr -and -not $fr.Fits) {
+            "Insufficient free space (have $haveGB GB, need $needGB GB)"
+        }
+        else {
+            "Ready"
+        }
+
+    [pscustomobject]@{
+        Drive      = $vr.Drive
+        Valid      = $vr.Valid           # structural check
+        Fits       = if ($fr) { $fr.Fits } else { $false }  # capacity check
+        FileSystem = $vr.FileSystem
+        FreeGB     = $haveGB
+        NeedGB     = $needGB
+        Reason     = $reason
+    }
 }
 
 Dump-Object $validationResults "All validation rows"
 
 # 6) Print a summary table
-Write-Header 'Target validation summary'
+Write-Header 'Target Drive validation summary'
 $validationResults |
     Sort-Object Drive |
-    Format-Table Drive, Valid, Fits, FileSystem, FreeGB, Reason, SpaceNote -AutoSize
+    Format-Table Drive, Valid, Fits, FileSystem, FreeGB, NeedGB, Reason -AutoSize
+
 
 # 7) Build the list of valid targets
 $validTargets = $validationResults |
@@ -432,8 +443,8 @@ if (-not $validTargets -or $validTargets.Count -eq 0) {
     exit $EXIT.PRECHECK
 }
 
-Write-Host ''
-Write-Host ('Valid targets (with space): {0}' -f ($validTargets -join ', ')) -ForegroundColor Green
+#Write-Host ''
+Write-Host ('Valid Target Drives (with space): {0}' -f ($validTargets -join ', ')) -ForegroundColor Green
 Write-Host ''
 
 Check-Abort
