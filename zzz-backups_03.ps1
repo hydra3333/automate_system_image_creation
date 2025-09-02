@@ -69,6 +69,9 @@ function Dump-Object($Object, [string]$Label = "") {
 # ============================ Settings / Globals ============================
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
+$sageset_profile       = 1  # pre-defined profile number, saved by the user, for cleanmgr to cleanup the system
+                            # require that profile 1 has been configured previously via:
+                            #    cleanmgr.exe /sageset:1
 
 $EXIT = @{
   OK            = 0
@@ -374,7 +377,7 @@ function cleanup_c_windows_temp {
             # Get size before cleanup (for reporting)
             $beforeSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             Write-Host "$tempPath ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB)" -NoNewline
-            Trace 'Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue'
+            Trace "Remove-Item -Path ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
             #Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
             $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             $freed = $beforeSize - $afterSize
@@ -412,7 +415,7 @@ function cleanup_c_temp_for_every_user {
                 $itemCount = $listing.Count
                 $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
                 Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
-                Trace 'Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue'
+                Trace "Remove-Item ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
                 #Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
@@ -463,7 +466,10 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'Service Worker\CacheStorage\*'),
               (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
             )
-            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            foreach($pp in $paths){
+                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+            }
             # as network houses cookies, deleting cookies logs you out of all browser websites
             # Network: clear everything except cookies & key state
             #$net = Join-Path $p.FullName 'Network'
@@ -497,7 +503,10 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'Service Worker\CacheStorage\*'),
               (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
             )
-            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            foreach($pp in $paths){
+                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+            }
             # as network houses cookies, deleting cookies logs you out of all browser websites
             # Network: clear everything except cookies & key state
             #$net = Join-Path $p.FullName 'Network'
@@ -529,7 +538,10 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'shader-cache\*'),
               (Join-Path $p.FullName 'jumpListCache\*')
             )
-            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            foreach($pp in $paths){
+                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                #Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
+            }
             $cleaned++
           }
           Write-Host ('  Firefox: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
@@ -542,6 +554,173 @@ function clear_browser_data_for_all_users {
     Check-Abort
     return $true
 }
+
+function empty_recycle_bins {
+    try {
+        Write-Host 'Emptying Recycle Bin for C: drive' -ForegroundColor White
+        Trace "Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue"
+        #Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
+        Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
+    } catch {
+        Abort "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
+    }
+    Check-Abort
+    try {
+        Write-Host 'Emptying Recycle Bins on all attached drives' -ForegroundColor White
+        Trace "Clear-RecycleBin -Force -ErrorAction Continue"
+        #Clear-RecycleBin -Force -ErrorAction Continue
+        Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
+    } catch {
+        Abort "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
+    }
+    Write-Host 'Emptying Recycle Bins on all attached drives completed.' -ForegroundColor Cyan
+    Check-Abort
+    return $true
+}
+
+function get_cleanmgr_profile_status {
+<#
+.SYNOPSIS
+  Check if a CleanMgr /sagerun profile is configured.
+
+.PARAMETER SageRunId
+  Integer profile id used with /sagerun:n and /sageset:n.
+
+.OUTPUTS
+  [pscustomobject] with:
+    SageRunId, FlagName, ConfiguredItems, Exists
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(0,9999)]
+        [int] $SageRunId
+    )
+    $flagName = ('StateFlags{0:D4}' -f $SageRunId)
+    $baseKey  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches'
+    $count    = 0
+    try {
+        $items = Get-ChildItem -LiteralPath $baseKey -ErrorAction Stop
+    } catch {
+        return [pscustomobject]@{
+            SageRunId        = $SageRunId
+            FlagName         = $flagName
+            ConfiguredItems  = 0
+            Exists           = $false
+        }
+    }
+    foreach ($it in $items) {
+        try {
+            $p = Get-ItemProperty -Path $it.PSPath -Name $flagName -ErrorAction SilentlyContinue
+            if ($null -ne $p.$flagName) { $count++ }
+        } catch { }
+    }
+    [pscustomobject]@{
+        SageRunId        = $SageRunId
+        FlagName         = $flagName
+        ConfiguredItems  = $count
+        Exists           = ($count -gt 0)
+    }
+}
+
+function run_disk_cleanup_using_cleanmgr_profile {
+<#
+.SYNOPSIS
+  Run Disk Cleanup with a given /sagerun profile, with safety checks
+  and an optional free-space before/after report.
+
+.PARAMETER SageRunId
+  Integer profile id (must have been configured via cleanmgr /sageset:<id>).
+
+.PARAMETER MeasureDrives
+  Drives to measure free space on before/after (e.g. 'C','D').
+
+.PARAMETER RequireConfiguredProfile
+  If set, refuse to run when the specified profile has no configured items.
+
+.OUTPUTS
+  $true on success (exit code 0), otherwise $false.
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(0,9999)]
+        [int]      $SageRunId,
+        [string[]] $MeasureDrives = @('C'),
+        [switch]   $RequireConfiguredProfile
+    )
+    Check-Abort
+    # Ensure cleanmgr exists
+    $cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        Abort 'cleanmgr.exe not found (Desktop Experience may be missing).' $EXIT.PRECHECK
+    }
+    # Profile sanity
+    $status = get_cleanmgr_profile_status -SageRunId $SageRunId
+    if (-not $status.Exists) {
+        $msg = "SageRun profile $SageRunId appears unconfigured (no $($status.FlagName) entries)."
+        if ($RequireConfiguredProfile) {
+            Abort $msg $EXIT.BAD_ARGS
+        } else {
+            Write-Warning $msg
+        }
+    }
+    # Measure free space before
+    $before = @{}
+    foreach ($d in $MeasureDrives) {
+        try {
+            $letter = ($d.TrimEnd(':','\'))[0]
+            $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
+            $before[("$letter:")] = [Int64]$psd.Free
+        } catch { }
+    }
+    $argList = @("/sagerun:$SageRunId")
+    Trace ("{0} {1}" -f $cmd.Source, ($argList -join ' '))
+
+    try {
+        $proc = Start-Process -FilePath $cmd.Source `
+                              -ArgumentList $argList `
+                              -Wait -PassThru -NoNewWindow
+        $exitCode = $proc.ExitCode
+    } catch {
+        Abort ("Failed to start cleanmgr: {0}" -f $_.Exception.Message) $EXIT.GENERIC
+    }
+    Check-Abort
+    # Measure free space after
+    $after = @{}
+    foreach ($d in $MeasureDrives) {
+        try {
+            $letter = ($d.TrimEnd(':','\'))[0]
+            $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
+            $after[("$letter:")] = [Int64]$psd.Free
+        } catch { }
+    }
+    # Report freed space
+    $rows = foreach ($k in $before.Keys) {
+        if ($after.ContainsKey($k)) {
+            [pscustomobject]@{
+                Drive  = $k
+                FreedGB = [math]::Round( ($after[$k] - $before[$k]) / 1GB, 1)
+            }
+        }
+    }
+    if ($rows -and $rows.Count) {
+        Write-Host ''
+        Write-Host 'Disk Cleanup freed:' -ForegroundColor Cyan
+        $rows | Sort-Object Drive | Format-Table -AutoSize
+        Write-Host ''
+    }
+    if ($exitCode -eq 0) {
+        Write-Host ("cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Green
+        return $true
+    } else {
+        Write-Warning ("cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode)
+        return $false
+    }
+}
+
+
+
+
+
 
 
 # ================================ Main ======================================
@@ -658,25 +837,13 @@ if ($DoCleanupBeforehand) {
     cleanup_c_windows_temp
     cleanup_c_temp_for_every_user
     clear_browser_data_for_all_users
-    
-    
-    
-    echo ==============================================================
-
-    echo ==============================================================
-    REM --- Empty Recycle Bin C: only not possible directly, this empties all
-    call :empty_recycle_bins
-    echo ==============================================================
-
-    echo ==============================================================
-    REM --- Run Disk Cleanup using preconfigured profile, over all disk drives ---
-    echo Running Disk Cleanup with profile %sageset_profile% ...
-    echo cleanmgr /sagerun:%sageset_profile%
-    cleanmgr /sagerun:%sageset_profile%
-    echo ==============================================================
-    timeout /t 2 >nul
-
+    empty_recycle_bins
+    #run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
+    run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C')
 }
+
+Check-Abort
+
 
 # ============================ Where to add work =============================
 # At this point you have:
