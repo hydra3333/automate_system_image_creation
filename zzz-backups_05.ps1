@@ -673,7 +673,8 @@ function run_disk_cleanup_using_cleanmgr_profile {
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
-            $before[("$letter:")] = [Int64]$psd.Free
+            #$before[("$letter:")] = [Int64]$psd.Free
+            $before["${letter}:"] = [int64]$psd.Free
         } catch { }
     }
     $argList = @("/sagerun:$SageRunId")
@@ -695,7 +696,8 @@ function run_disk_cleanup_using_cleanmgr_profile {
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
-            $after[("$letter:")] = [Int64]$psd.Free
+            #$after[("$letter:")] = [Int64]$psd.Free
+            $after ["${letter}:"] = [int64]$psd.Free
         } catch { }
     }
     # Report freed space
