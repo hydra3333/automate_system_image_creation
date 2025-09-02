@@ -62,7 +62,7 @@ function Trace([string]$Message) {
 }
 
 function Dump-Object($Object, [string]$Label = "") {
-    if (-not ($script:IsVerbose -or $script:enable_trace) { return }
+    if (-not ($script:IsVerbose -or $script:enable_trace)) { return }
     if ($Label) { Write-Host "[VERBOSE] $Label =" -ForegroundColor DarkGray }
     try {
         $Object | Format-List * | Out-String -Width 500 |
