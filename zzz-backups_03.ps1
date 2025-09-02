@@ -356,6 +356,194 @@ function Test-FreeSpaceForImage {
     return $result
 }
 
+# ========================== Operational =========================
+function cleanup_c_windows_temp {
+    <#
+      .SYNOPSIS
+        cleanup TEMP folders, cache folders, restore points, etc
+
+      .OUTPUTS
+        $true
+    #>
+    $tempPath = "C:\Windows\TEMP"
+    if (Test-Path $tempPath) {
+        try {
+            Write-Host "Cleaning folder $tempPath ..." -ForegroundColor White
+            # Get item count before cleanup (for reporting)
+            $itemCount = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+            # Get size before cleanup (for reporting)
+            $beforeSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "$tempPath ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB)" -NoNewline
+            Trace 'Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue'
+            #Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+            $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+            $freed = $beforeSize - $afterSize
+            Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
+        } catch {
+            Write-Host "WARNING ONLY: Error cleaning $tempPath : $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "WARNING ONLY: $tempPath folder unavailable for cleaning" -ForegroundColor Yellow
+    }
+    Check-Abort
+    return $true
+}
+
+function cleanup_c_temp_for_every_user {
+    <#
+      .SYNOPSIS
+        cleanup user TEMP folders for every user
+
+      .OUTPUTS
+        $true
+    #>
+    $userDirs = Get-ChildItem "C:\Users" -Directory | Where-Object {
+        $_.Name -notin @("Public", "Default", "Default User", "All Users") -and
+        $_.Name -notlike "defaultuser*"
+    }
+    Write-Host "Cleaning TEMP folders for $($userDirs.Count) users..."  -ForegroundColor Cyan
+    foreach ($userDir in $userDirs) {
+        $userName = $userDir.Name
+        $tempPath = "C:\Users\$userName\AppData\Local\Temp"
+        if (Test-Path $tempPath) {
+            try {
+                # Get item count and size before cleanup (for reporting)
+                $listing = Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue
+                $itemCount = $listing.Count
+                $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
+                Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
+                Trace 'Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue'
+                #Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+                $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+                $freed = $beforeSize - $afterSize
+                Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
+            } catch {
+                Write-Host "WARNING ONLY: Error cleaning TEMP for $userName : $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "WARNING ONLY: User: $userName - No TEMP folder" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "TEMP folders cleanup completed for all users" -ForegroundColor Cyan
+    Check-Abort
+    return $true
+}
+
+function clear_browser_data_for_all_users {
+    <#
+      .SYNOPSIS
+        cleanup browser data (Chrome, Edge, Firefox) for every user
+
+      .OUTPUTS
+        $true
+    #>
+    Write-Host 'Stopping running browsers to avoid file locks...'
+    Get-Process chrome, msedge, msedgewebview2, firefox, opera, brave -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Check-Abort
+    # Get all user directories, excluding system accounts
+    $userDirs = Get-ChildItem 'C:\Users' -Directory | Where-Object { $_.Name -notin @('Public','Default','Default User','All Users') -and $_.Name -notlike 'defaultuser*' }
+    Write-Host ("Cleaning caches for " + $userDirs.Count + " user(s)...") -ForegroundColor Cyan
+    foreach($userDir in $userDirs){
+      $userName = $userDir.Name
+      Write-Host (" Cleaning User: " + $userName) -ForegroundColor White
+      Check-Abort
+      # ---------- Chrome ----------
+      try {
+        $chromeRoot = "C:\Users\$userName\AppData\Local\Google\Chrome\User Data"
+        if(Test-Path $chromeRoot){
+          $profiles = Get-ChildItem $chromeRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(Default|Profile \d+|Guest Profile)$' }
+          $cleaned = 0
+          foreach($p in $profiles){
+            $paths = @(
+              (Join-Path $p.FullName 'Cache\*'),
+              (Join-Path $p.FullName 'Cache\Cache_Data\*'),
+              (Join-Path $p.FullName 'Media Cache\*'),
+              (Join-Path $p.FullName 'Code Cache\*'),
+              (Join-Path $p.FullName 'GPUCache\*'),
+              (Join-Path $p.FullName 'Service Worker\CacheStorage\*'),
+              (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
+            )
+            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            # as network houses cookies, deleting cookies logs you out of all browser websites
+            # Network: clear everything except cookies & key state
+            #$net = Join-Path $p.FullName 'Network'
+            #if (Test-Path $net) {
+            #  Get-ChildItem $net -Force -ErrorAction SilentlyContinue |
+            #    Where-Object { $_.Name -notlike 'Cookies*' -and $_.Name -ne 'TransportSecurity' -and $_.Name -notlike 'Reporting and NEL*' -and $_.Name -ne 'Network Persistent State' } |
+            #    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            #}
+            $cleaned++
+          }
+          Write-Host ('  Chrome: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+        } else {
+          Write-Host ('  Chrome: no profile root found for ' + $userName) -ForegroundColor Yellow
+        }
+      } catch {
+          Write-Host ("  Chrome: " + $_.Exception.Message) -ForegroundColor Red
+      }
+      # ---------- Edge (Chromium) ----------
+      try {
+        $edgeRoot = "C:\Users\$userName\AppData\Local\Microsoft\Edge\User Data"
+        if(Test-Path $edgeRoot){
+          $profiles = Get-ChildItem $edgeRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(Default|Profile \d+|Guest Profile)$' }
+          $cleaned = 0
+          foreach($p in $profiles){
+            $paths = @(
+              (Join-Path $p.FullName 'Cache\*'),
+              (Join-Path $p.FullName 'Cache\Cache_Data\*'),
+              (Join-Path $p.FullName 'Media Cache\*'),
+              (Join-Path $p.FullName 'Code Cache\*'),
+              (Join-Path $p.FullName 'GPUCache\*'),
+              (Join-Path $p.FullName 'Service Worker\CacheStorage\*'),
+              (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
+            )
+            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            # as network houses cookies, deleting cookies logs you out of all browser websites
+            # Network: clear everything except cookies & key state
+            #$net = Join-Path $p.FullName 'Network'
+            #if (Test-Path $net) {
+            #  Get-ChildItem $net -Force -ErrorAction SilentlyContinue |
+            #    Where-Object { $_.Name -notlike 'Cookies*' -and $_.Name -ne 'TransportSecurity' -and $_.Name -notlike 'Reporting and NEL*' -and $_.Name -ne 'Network Persistent State' } |
+            #    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            #}
+            $cleaned++
+          }
+          Write-Host ('  Edge: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+        } else {
+          Write-Host ('  Edge: no profile root found for ' + $userName) -ForegroundColor Yellow
+        }
+      } catch {
+        Write-Host ("  Edge: " + $_.Exception.Message) -ForegroundColor Red
+      }
+      # ---------- Firefox ----------
+      try {
+        $ffLocal = "C:\Users\$userName\AppData\Local\Mozilla\Firefox\Profiles"
+        if(Test-Path $ffLocal){
+          $profiles = Get-ChildItem $ffLocal -Directory -ErrorAction SilentlyContinue
+          $cleaned = 0
+          foreach($p in $profiles){
+            $paths = @(
+              (Join-Path $p.FullName 'cache2\*'),
+              (Join-Path $p.FullName 'startupCache\*'),
+              (Join-Path $p.FullName 'thumbnails\*'),
+              (Join-Path $p.FullName 'shader-cache\*'),
+              (Join-Path $p.FullName 'jumpListCache\*')
+            )
+            foreach($pp in $paths){ Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue }
+            $cleaned++
+          }
+          Write-Host ('  Firefox: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+        } else { Write-Host '  Firefox: no profile root found' -ForegroundColor Yellow }
+      } catch {
+        Write-Host ("  Firefox: " + $_.Exception.Message) -ForegroundColor Red
+      }
+    }
+    Write-Host 'Browser cache cleanup completed.' -ForegroundColor Cyan
+    Check-Abort
+    return $true
+}
+
+
 # ================================ Main ======================================
 Write-Header ("Starting process. Target Drives: '{0}'  Headroom: {1}%" -f $Target_Drives_List, $Headroom_PCT)
 
@@ -466,7 +654,28 @@ Write-Host ''
 
 Check-Abort
 
-if (-not $NoCleanupBeforehand) 
+if ($DoCleanupBeforehand) {
+    cleanup_c_windows_temp
+    cleanup_c_temp_for_every_user
+    clear_browser_data_for_all_users
+    
+    
+    
+    echo ==============================================================
+
+    echo ==============================================================
+    REM --- Empty Recycle Bin C: only not possible directly, this empties all
+    call :empty_recycle_bins
+    echo ==============================================================
+
+    echo ==============================================================
+    REM --- Run Disk Cleanup using preconfigured profile, over all disk drives ---
+    echo Running Disk Cleanup with profile %sageset_profile% ...
+    echo cleanmgr /sagerun:%sageset_profile%
+    cleanmgr /sagerun:%sageset_profile%
+    echo ==============================================================
+    timeout /t 2 >nul
+
 }
 
 # ============================ Where to add work =============================
