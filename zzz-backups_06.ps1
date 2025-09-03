@@ -384,7 +384,7 @@ function cleanup_c_windows_temp {
             # Get size before cleanup (for reporting)
             $beforeSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             Write-Host "$tempPath ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB)" -NoNewline
-            Trace "Remove-Item -Path ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
+            Trace ("Remove-Item -Path ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue")
             Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
             $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             $freed = $beforeSize - $afterSize
@@ -422,7 +422,7 @@ function cleanup_c_temp_for_every_user {
                 $itemCount = $listing.Count
                 $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
                 Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
-                Trace "Remove-Item ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue"
+                Trace ("Remove-Item ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
@@ -474,7 +474,7 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
             )
             foreach($pp in $paths){
-                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                Trace ("Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             # as network houses cookies, deleting cookies logs you out of all browser websites
@@ -511,7 +511,7 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'Service Worker\ScriptCache\*')
             )
             foreach($pp in $paths){
-                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                Trace ("Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             # as network houses cookies, deleting cookies logs you out of all browser websites
@@ -546,7 +546,7 @@ function clear_browser_data_for_all_users {
               (Join-Path $p.FullName 'jumpListCache\*')
             )
             foreach($pp in $paths){
-                Trace "Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue"
+                Trace ("Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item $pp -Recurse -Force -ErrorAction SilentlyContinue
             }
             $cleaned++
@@ -565,7 +565,7 @@ function clear_browser_data_for_all_users {
 function empty_recycle_bins {
     try {
         Write-Host 'Emptying Recycle Bin for C: drive' -ForegroundColor White
-        Trace "Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue"
+        Trace ("Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue")
         Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
     } catch {
@@ -575,7 +575,7 @@ function empty_recycle_bins {
     Check-Abort
     try {
         Write-Host 'Emptying Recycle Bins on all attached drives' -ForegroundColor White
-        Trace "Clear-RecycleBin -Force -ErrorAction Continue"
+        Trace ("Clear-RecycleBin -Force -ErrorAction Continue")
         Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
     } catch {
@@ -631,7 +631,6 @@ function get_cleanmgr_profile_status {
     }
 }
 
-NEW
 function run_disk_cleanup_using_cleanmgr_profile {
 <#
 .SYNOPSIS
@@ -660,7 +659,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
     Trace ("run_disk_cleanup_using_cleanmgr_profile: SageRunId=$SageRunId MeasureDrives=$MeasureDrives RequireConfiguredProfile=$RequireConfiguredProfile")
     Check-Abort
     # Ensure cleanmgr exists
-    Trace "cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue"
+    Trace ("cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue")
     $cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue
     if (-not $cmd) {
         Abort 'cleanmgr.exe not found (Desktop Experience may be missing).' $EXIT.PRECHECK
@@ -679,10 +678,10 @@ function run_disk_cleanup_using_cleanmgr_profile {
     # --- Measure free space BEFORE
     $before = @{}
     foreach ($d in $MeasureDrives) {
-        Trace "BEFORE 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
+        Trace ("BEFORE 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
-            Trace "psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop"
+            Trace ("psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop")
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
             $before["${letter}:"] = [int64]$psd.Free
             Trace ("Before[{0}] = {1:N1} GB" -f "$letter:", ($psd.Free/1GB))
@@ -706,10 +705,10 @@ function run_disk_cleanup_using_cleanmgr_profile {
     # --- Measure free space AFTER
     $after = @{}
     foreach ($d in $MeasureDrives) {
-        Trace "AFTER in 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
+        Trace ("AFTER in 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
-            Trace "psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop"
+            Trace ("psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop")
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
             $after["${letter}:"] = [int64]$psd.Free
             Trace ("After [{0}] = {1:N1} GB" -f "$letter:", ($psd.Free/1GB))
@@ -721,7 +720,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
     # --- Build and always print a table (even if Freed is 0.0 or n/a)
     $rows = @(
         foreach ($driveKey in ($before.Keys + $after.Keys | Select-Object -Unique | Sort-Object)) {
-            Trace "'INSIDE loop rows= ... foreach (driveKey in ($before.Keys + $after.Keys | Select-Object -Unique | Sort-Object)) ... curreltly driveKey=$driveKey")
+            Trace ("INSIDE loop rows= ... foreach (driveKey in (before.Keys + after.Keys | Select-Object -Unique | Sort-Object)) ... currently driveKey=$driveKey before.Keys=$before.Keys after.Keys=$after.Keys")
             $b = if ($before.ContainsKey($driveKey)) { [double]$before[$driveKey]/1GB } else { $null }
             $a = if ($after.ContainsKey($driveKey))  { [double]$after[$driveKey]/1GB }  else { $null }
             $f = if ($a -ne $null -and $b -ne $null) { [math]::Round($a - $b, 1) } else { $null }
