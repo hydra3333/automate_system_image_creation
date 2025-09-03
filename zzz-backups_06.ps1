@@ -37,9 +37,9 @@ param(
 
     # Cleanup toggles (independent pair)
     [switch]$CleanupBeforehand,
-    [switch]$NoCleanupBeforehand
+    [switch]$NoCleanupBeforehand,
 
-    [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag",
+    [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag"
 )
 
 #----------------------------------------------------------------------------------------
@@ -878,7 +878,7 @@ function enable_system_restore_protection_on_C {
     return $return_code
 }
 
-function resize_shadow_storage_limit_on_c {
+function resize_shadow_storage_limit_on_C {
     <#
     .SYNOPSIS
       Resizes the shadow storage limit on the drive C: to the nominated number of gigabytes.
@@ -927,7 +927,7 @@ function resize_shadow_storage_limit_on_c {
 function PurgeRestorePoints_on_C {
     <#
     .SYNOPSIS
-      Puges all System Restore Points on the drive C:
+      Purges all System Restore Points on the drive C:
 
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
@@ -952,11 +952,38 @@ function PurgeRestorePoints_on_C {
     return $return_code
 }
 
+function create_restore_point_on_C {
+    <#
+    .SYNOPSIS
+      Creates a System Restore Point on the drive C:
 
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
+    Write-Host 'Creating a System Restore Point on drive C:  ...' -ForegroundColor White
+    # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
+    #powershell -ExecutionPolicy Bypass -NoProfile -Command "Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'"
 
-
-
-
+    $enableCmd = Get-Command -Name "Checkpoint-Computer" -ErrorAction SilentlyContinue
+    if (-not $enableCmd) {
+        $result.Message = 'Checkpoint-Computer cmdlet not available on this system.'
+        Write-Warning ("WARNING ONLY: System Restore Point creation 'Checkpoint-Computer cmdlet' not available on this system : {0}" -f $result.Message)
+        return $false
+    }
+    try {
+        Trace ("Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'")
+        Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'
+        Start-Sleep -Seconds 3
+        Write-Host 'Created System Restore Point on drive C:' -ForegroundColor Green
+        $return_code = $true
+    } catch {
+        Write-Warning ("WARNING ONLY: Failed to create System Restore Point on drive C: : {0}" -f $($_.Exception.Message))
+        $return_code = $false
+    }
+    Write-Host 'Creation of System Restore Point on drive C: completed.' -ForegroundColor Cyan
+    Check-Abort
+    return $return_code
+}
 
 # ================================ Main ======================================
 Write-Header ("Starting process. Target Drives: '{0}'  Headroom: {1}%" -f $Target_Drives_List, $Headroom_PCT)
@@ -1068,6 +1095,12 @@ Write-Host ''
 
 Check-Abort
 
+$return_status = enable_system_restore_protection_on_C
+$return_status = resize_shadow_storage_limit_on_C "100"
+$return_status = list_current_restore_points_on_C
+if ($DoPurgeRestorePointsBeforehand) {
+    $return_status = PurgeRestorePoints_on_C
+}
 if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_windows_temp
     $return_status = cleanup_c_temp_for_every_user
@@ -1076,13 +1109,12 @@ if ($DoCleanupBeforehand) {
     #   run_disk_cleanup_using_cleanmgr_profile -RequireConfiguredProfile -Verbose
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
 }
-if ($DoPurgeRestorePointsBeforehand) {
-    $return_status = PurgeRestorePoints_on_C
-}
 
-$return_status = enable_system_restore_protection_on_C
-$return_status = resize_shadow_storage_limit_on_c "100"
+$return_status = create_restore_point_on_C
+#powershell -ExecutionPolicy Bypass -NoProfile -Command "Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'"
+
 $return_status = list_current_restore_points_on_C
+
 
 
 
