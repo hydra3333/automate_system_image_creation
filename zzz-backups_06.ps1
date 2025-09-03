@@ -53,8 +53,8 @@ $DoCleanupBeforehand = switch ($PSCmdlet.ParameterSetName) {
 # 1. from commandline -Verbose
 $script:IsVerbose = $VerbosePreference -eq 'Continue'
 # 2. our own flag to edit in this script, useful during development/debugging
-$script:enable_trace = $true
-#$script:want_trace = $false
+#$script:enable_trace = $true
+$script:want_trace = $false
 
 # Trace helpers
 function Trace([string]$Message) {
@@ -653,10 +653,11 @@ function run_disk_cleanup_using_cleanmgr_profile {
         [Parameter(Mandatory = $true)]
         [ValidateRange(0,9999)]
         [int]      $SageRunId,
-        [string[]] $MeasureDrives = @('C'),
+        [string[]] $MeasureDrives = @('C:'),
         [switch]   $RequireConfiguredProfile
     )
     Trace ("run_disk_cleanup_using_cleanmgr_profile: SageRunId=$SageRunId MeasureDrives=$MeasureDrives RequireConfiguredProfile=$RequireConfiguredProfile")
+    Write-Host ("Cleaning up Drives using cleanmgr /sagerun:{0} " -f $SageRunId) -ForegroundColor White
     Check-Abort
     # Ensure cleanmgr exists
     Trace ("cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue")
@@ -732,7 +733,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
             }
         }
     )
-    Write-Host ''
+    #Write-Host ''
     Write-Host 'Disk Cleanup free-space report:' -ForegroundColor Cyan
     Trace ("About to do if (rows.Count -gt 0) ... rows.Count=$($rows.Count)")
     if ($rows.Count -gt 0) {
@@ -749,12 +750,12 @@ function run_disk_cleanup_using_cleanmgr_profile {
     } else {
         Write-Warning 'No drive free-space measurements were captured.'
     }
-    #Write-Host ''
     if ($exitCode -eq 0) {
-        Write-Host ("cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Green
+        Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Cyan
         return $true
     } else {
         Write-Warning ("cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode)
+        Write-Host "Cleanup Drives using cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode -ForegroundColor Yellow
         return $false
     }
 }
