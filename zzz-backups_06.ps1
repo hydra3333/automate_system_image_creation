@@ -1009,7 +1009,7 @@ function create_system_image_backups {
         try {
             Trace ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive)
             Write-Host ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
-            Trace "(proc = Start-Process -FilePath `'wbadmin.exe`' -ArgumentList `@(`'start`', `'backup`', `"-backupTarget:`$TargetDrive`", `'-include:C:`', `'-allCritical`') -Wait -PassThru -NoNewWindow"
+            Trace "(proc = Start-Process -FilePath `'wbadmin.exe`' -ArgumentList `@(`'start`', `'backup`', `"-backupTarget:$TargetDrive`", `'-include:C:`', `'-allCritical`') -Wait -PassThru -NoNewWindow"
             $proc = Start-Process -FilePath 'wbadmin.exe' -ArgumentList @('start', 'backup', "-backupTarget:$TargetDrive", '-include:C:', '-allCritical') -Wait -PassThru -NoNewWindow
             if ($proc.ExitCode -ne 0) {
                 Write-Error ("ERROR: Create a System Image Backup to {0} Failed with code {1}" -f $TargetDrive, $proc.ExitCode)
@@ -1120,16 +1120,17 @@ $validTargets = $validationResults |
     Where-Object { $_.Valid -and $_.Fits } |
     Select-Object -ExpandProperty Drive
 
-Trace ("validTargets: {0}" -f (($validTargets | ForEach-Object { $_ }) -join ', '))
+$ValidTargetDrive_list = (@($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
 
-if (-not $validTargets -or $validTargets.Count -eq 0) {
+Trace ("ValidTargetDrive_list: {0}" -f (($ValidTargetDrive_list | ForEach-Object { $_ }) -join ', '))
+
+if (-not $ValidTargetDrive_list -or $ValidTargetDrive_list.Count -eq 0) {
     Write-Host ''
     Write-Error 'No valid target drives remain (either invalid or insufficient space).'
     exit $EXIT.PRECHECK
 }
 
-#Write-Host ''
-Write-Host ('Valid Target Drives (with space): {0}' -f ($validTargets -join ', ')) -ForegroundColor Green
+Write-Host ('Valid Target Drives (with enough free disk space): {0}' -f ($ValidTargetDrive_list -join ', ')) -ForegroundColor Green
 Write-Host ''
 
 Check-Abort
@@ -1146,47 +1147,15 @@ if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_temp_for_every_user
     $return_status = clear_browser_data_for_all_users
     $return_status = empty_recycle_bins
-    #   run_disk_cleanup_using_cleanmgr_profile -RequireConfiguredProfile -Verbose
-    $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
+    #   run_disk_cleanup_using_cleanmgr_profile   -RequireConfiguredProfile   -Verbose
+    $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @(@('C:') +  $ValidTargetDrive_list)
 }
 
 $return_status = create_restore_point_on_C
 
 $return_status = list_current_restore_points_on_C
 
-
-$return_status = create_system_image_backups @($validTargets)
-
-
-Check-Abort
-
-
-# ============================ Where to add work =============================
-# At this point you have:
-#   - $validTargets    : array of 'X:' drives that passed all checks
-#   - $estimate        : object with BaseEstimate_Bytes and RequiredWithHeadroom_Bytes
-#
-# Example skeleton for doing the actual backup (left commented out):
-# foreach ($t in $validTargets) {
-#     try {
-#         Write-Host ("Starting wbadmin to {0} ..." -f $t) -ForegroundColor Yellow
-#         $proc = Start-Process -FilePath 'wbadmin.exe' -ArgumentList @(
-#                     'start','backup',
-#                     "-backupTarget:$t",
-#                     '-include:C:',
-#                     '-allCritical',
-#                     '-quiet'
-#                 ) -Wait -PassThru -NoNewWindow
-#         if ($proc.ExitCode -ne 0) {
-#             Write-Warning ("wbadmin failed on {0} with code {1}" -f $t, $proc.ExitCode)
-#         } else {
-#             Write-Host ("wbadmin completed OK on {0}" -f $t) -ForegroundColor Green
-#         }
-#     } catch {
-#         Write-Error ("wbadmin exception on {0}: {1}" -f $t, $_.Exception.Message)
-#     }
-#     Check-Abort
-# }
+$return_status = create_system_image_backups $ValidTargetDrive_list
 
 Unregister-Event -SourceIdentifier ConsoleCancelEvent -ErrorAction SilentlyContinue | Out-Null
 exit $EXIT.OK
