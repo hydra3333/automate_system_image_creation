@@ -985,6 +985,45 @@ function create_restore_point_on_C {
     return $return_code
 }
 
+function create_system_image_backups {
+    <#
+    .SYNOPSIS
+      Create a System Image Backup on each of a set of target drives
+
+    .PARAMETER TargetDrives
+      Target drives to create System Image Backups to (e.g. 'D','G').    
+
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]] $TargetDrives
+    )
+    
+    Trace ("Create a System Image Backup on each of a set of target drives TargetDrives=$TargetDrives")
+    Write-Host ("Create a System Image Backup on each of a set of target drives TargetDrives=$TargetDrives") -ForegroundColor Cyan
+    foreach ($TargetDrive in $TargetDrives) {
+        Trace ("INSIDE 'foreach (TargetDrive in TargetDrives)' ... TargetDrive=$TargetDrive TargetDrives=$TargetDrives")
+        Write-Host "Starting Create a System Image Backup of C: to $TargetDrive ..." -ForegroundColor Cyan
+        try {
+            Trace ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive)
+            Write-Host ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
+            Trace "(proc = Start-Process -FilePath `'wbadmin.exe`' -ArgumentList `@(`'start`', `'backup`', `"-backupTarget:`$TargetDrive`", `'-include:C:`', `'-allCritical`') -Wait -PassThru -NoNewWindow"
+            $proc = Start-Process -FilePath 'wbadmin.exe' -ArgumentList @('start', 'backup', "-backupTarget:$TargetDrive", '-include:C:', '-allCritical') -Wait -PassThru -NoNewWindow
+            if ($proc.ExitCode -ne 0) {
+                Write-Error ("ERROR: Create a System Image Backup to {0} Failed with code {1}" -f $TargetDrive, $proc.ExitCode)
+            } else {
+                Write-Host ("Create a System Image Backup to {0} was successful." -f $TargetDrive) -ForegroundColor Green
+            }
+        } catch {
+            Write-Error ("ERROR: Create a System Image Backup to {0} Failed: {1}" -f $TargetDrive, $_.Exception.Message)
+        }
+        Check-Abort
+    }
+    return $true
+}
+
 # ================================ Main ======================================
 Write-Header ("Starting process. Target Drives: '{0}'  Headroom: {1}%" -f $Target_Drives_List, $Headroom_PCT)
 
@@ -1116,7 +1155,7 @@ $return_status = create_restore_point_on_C
 $return_status = list_current_restore_points_on_C
 
 
-
+$return_status = create_system_image_backups @($validTargets)
 
 
 Check-Abort
