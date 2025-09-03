@@ -1009,8 +1009,8 @@ function create_system_image_backups {
         try {
             Trace ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive)
             Write-Host ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
-            Trace "(proc = Start-Process -FilePath `'wbadmin.exe`' -ArgumentList `@(`'start`', `'backup`', `"-backupTarget:$TargetDrive`", `'-include:C:`', `'-allCritical`') -Wait -PassThru -NoNewWindow"
-            $proc = Start-Process -FilePath 'wbadmin.exe' -ArgumentList @('start', 'backup', "-backupTarget:$TargetDrive", '-include:C:', '-allCritical') -Wait -PassThru -NoNewWindow
+            Trace "(proc = Start-Process -FilePath `'wbadmin.exe`' -ArgumentList `@(`'start`', `'backup`', `"-backupTarget:$TargetDrive`", `'-include:C:`', `'-allCritical`', '-quiet') -Wait -PassThru -NoNewWindow"
+            $proc = Start-Process -FilePath 'wbadmin.exe' -ArgumentList @('start', 'backup', "-backupTarget:$TargetDrive", '-include:C:', '-allCritical', '-quiet') -Wait -PassThru -NoNewWindow
             if ($proc.ExitCode -ne 0) {
                 Write-Error ("ERROR: Create a System Image Backup to {0} Failed with code {1}" -f $TargetDrive, $proc.ExitCode)
             } else {
