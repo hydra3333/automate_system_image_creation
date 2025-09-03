@@ -392,7 +392,7 @@ function cleanup_c_windows_temp {
     $tempPath = "C:\Windows\TEMP"
     if (Test-Path $tempPath) {
         try {
-            Write-Host "Cleaning folder $tempPath ..." -ForegroundColor White
+            Write-Host "Cleaning folder $tempPath ..." -ForegroundColor Cyan
             # Get item count before cleanup (for reporting)
             $itemCount = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object).Count
             # Get size before cleanup (for reporting)
@@ -465,7 +465,7 @@ function clear_browser_data_for_all_users {
         $true on success (exit code 0), otherwise $false.
     #>
     $return_code = $false
-    Write-Host 'Stopping running browsers to avoid file locks...'
+    Write-Host 'Stopping running browsers to avoid file locks...' -ForegroundColor Cyan
     Get-Process chrome, msedge, msedgewebview2, firefox, opera, brave -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Check-Abort
     # Get all user directories, excluding system accounts
@@ -593,7 +593,7 @@ function empty_recycle_bins {
     #>
     $return_code = $false
     try {
-        Write-Host 'Emptying Recycle Bin for drive C:' -ForegroundColor White
+        Write-Host 'Emptying Recycle Bin for drive C:' -ForegroundColor Cyan
         Trace ("Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue")
         Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
@@ -603,7 +603,7 @@ function empty_recycle_bins {
     }
     Check-Abort
     try {
-        Write-Host 'Emptying Recycle Bins on all attached drives' -ForegroundColor White
+        Write-Host 'Emptying Recycle Bins on all attached drives' -ForegroundColor Cyan
         Trace ("Clear-RecycleBin -Force -ErrorAction Continue")
         Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
@@ -686,7 +686,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
         [switch]   $RequireConfiguredProfile
     )
     Trace ("run_disk_cleanup_using_cleanmgr_profile: SageRunId=$SageRunId MeasureDrives=$MeasureDrives RequireConfiguredProfile=$RequireConfiguredProfile")
-    Write-Host ("Cleaning up Drives using cleanmgr /sagerun:{0} " -f $SageRunId) -ForegroundColor White
+    Write-Host ("Cleaning up Drives using cleanmgr /sagerun:{0} " -f $SageRunId) -ForegroundColor Cyan
     Check-Abort
     # Ensure cleanmgr exists
     Trace ("cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue")
@@ -797,7 +797,7 @@ function list_current_restore_points_on_C {
     .OUTPUTS
       Listing of current retore points on drive C:
     #>
-    Write-Host 'List of current restore points on drive C:' -ForegroundColor White
+    Write-Host 'List of current restore points on drive C:' -ForegroundColor Cyan
     try {
         Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @(`"list`", `"shadows`", `"/for=C:`") -Wait -PassThru -NoNewWindow")
         $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("list", "shadows", "/for=C:") -Wait -PassThru -NoNewWindow
@@ -826,7 +826,7 @@ function enable_system_restore_protection_on_C {
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
-    Write-Host 'Enabling System Restore Protection on drive C: (if disabled)...' -ForegroundColor White
+    Write-Host 'Enabling System Restore Protection on drive C: (if disabled)...' -ForegroundColor Cyan
     # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
     $enableCmd = Get-Command -Name Enable-ComputerRestore -ErrorAction SilentlyContinue
     if (-not $enableCmd) {
@@ -904,7 +904,7 @@ function resize_shadow_storage_limit_on_C {
         [int] $shadow_storage_limit_gb
     )
     $shadow_storage_limit_gb_string = '{0}GB' -f ([int]$shadow_storage_limit_gb)
-    Write-Host ("Resize Shadow Storage limit on drive C: to {0}..." -f $shadow_storage_limit_gb_string) -ForegroundColor White
+    Write-Host ("Resize Shadow Storage limit on drive C: to {0}..." -f $shadow_storage_limit_gb_string) -ForegroundColor Cyan
     try {
         Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `@(`"Resize`", `"ShadowStorage`", `"/For=C:`", `"/On=C:`", `"/MaxSize=$shadow_storage_limit_gb_string`"")
         $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("Resize", "ShadowStorage", "/For=C:", "/On=C:", "/MaxSize=$shadow_storage_limit_gb_string") -Wait -PassThru -NoNewWindow
@@ -932,7 +932,7 @@ function PurgeRestorePoints_on_C {
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
-    Write-Host ("Purging System Restore Points on drive C: ..." ) -ForegroundColor White
+    Write-Host ("Purging System Restore Points on drive C: ..." ) -ForegroundColor Cyan
     try {
         Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `@(`"delete`", `"shadows`", `"/For=C:`", `"/all`", `"/quiet`"")
         $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("delete", "shadows", "/For=C:", "/all", "/quiet") -Wait -PassThru -NoNewWindow
@@ -960,7 +960,7 @@ function create_restore_point_on_C {
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
-    Write-Host 'Creating a System Restore Point on drive C:  ...' -ForegroundColor White
+    Write-Host 'Creating a System Restore Point on drive C:  ...' -ForegroundColor Cyan
     # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
     #powershell -ExecutionPolicy Bypass -NoProfile -Command "Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'"
 
@@ -1097,7 +1097,6 @@ Check-Abort
 
 $return_status = enable_system_restore_protection_on_C
 $return_status = resize_shadow_storage_limit_on_C "100"
-$return_status = list_current_restore_points_on_C
 if ($DoPurgeRestorePointsBeforehand) {
     $return_status = PurgeRestorePoints_on_C
 }
