@@ -720,7 +720,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
     # --- Build and always print a table (even if Freed is 0.0 or n/a)
     $rows = @(
         foreach ($driveKey in ($before.Keys + $after.Keys | Select-Object -Unique | Sort-Object)) {
-            Trace ("INSIDE loop rows= ... foreach (driveKey in (before.Keys + after.Keys | Select-Object -Unique | Sort-Object)) ... currently driveKey=$driveKey before.Keys=$before.Keys after.Keys=$after.Keys")
+            Trace ("INSIDE loop rows= ... foreach (driveKey in (before.Keys + after.Keys | Select-Object -Unique | Sort-Object)) ... currently driveKey=$driveKey before.Keys=$($before.Keys) after.Keys=$($after.Keys)")
             $b = if ($before.ContainsKey($driveKey)) { [double]$before[$driveKey]/1GB } else { $null }
             $a = if ($after.ContainsKey($driveKey))  { [double]$after[$driveKey]/1GB }  else { $null }
             $f = if ($a -ne $null -and $b -ne $null) { [math]::Round($a - $b, 1) } else { $null }
@@ -744,7 +744,8 @@ function run_disk_cleanup_using_cleanmgr_profile {
                           @{n='FreeBeforeGB';e={ if ($_.FreeBeforeGB -ne $null) { '{0:N1}' -f $_.FreeBeforeGB } else { 'n/a' } }},
                           @{n='FreeAfterGB'; e={ if ($_.FreeAfterGB  -ne $null) { '{0:N1}' -f $_.FreeAfterGB  } else { 'n/a' } }},
                           @{n='FreedGB';     e={ if ($_.FreedGB      -ne $null) { '{0:N1}' -f $_.FreedGB      } else { 'n/a' } }} |
-            Format-Table -AutoSize
+            Format-Table -AutoSize |
+            Out-Host   # <-- this makes it display even when output is being captured
     } else {
         Write-Warning 'No drive free-space measurements were captured.'
     }
@@ -877,8 +878,8 @@ if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_temp_for_every_user
     $return_status = clear_browser_data_for_all_users
     $return_status = empty_recycle_bins
-    #$return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @('C') -RequireConfiguredProfile
-    $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives $validTargets   # -MeasureDrives @('C')
+    #$return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique ) -RequireConfiguredProfile
+    $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
 }
 
 Check-Abort
