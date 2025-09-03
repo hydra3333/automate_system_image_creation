@@ -22,30 +22,46 @@
     - Headroom_PCT is invalid
     - No valid drives remain after validation
 #>
-[CmdletBinding(SupportsShouldProcess=$true, DefaultParameterSetName='Do')]
+[CmdletBinding(SupportsShouldProcess=$true)]
 param(
     [Parameter(Mandatory = $true)]
     [string] $Target_Drives_List,
 
     [Parameter(Mandatory = $false)]
     [ValidateRange(0,500)]
-    [int]    $Headroom_PCT = 30,
-    
-    # mutually exclusive cleanup toggles
-    [Parameter(ParameterSetName='Do')]      # by putting each switch in a different set, you make them mutually exclusive
+    [int] $Headroom_PCT = 30,
+
+    # Purge toggles (independent pair)
+    [switch]$PurgeRestorePoints,
+    [switch]$NoPurgeRestorePoints,
+
+    # Cleanup toggles (independent pair)
     [switch]$CleanupBeforehand,
-    [Parameter(ParameterSetName='Skip')]    # by putting each switch in a different set, you make them mutually exclusive
-    [switch]$NoCleanupBeforehand,
-    
-    [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag"
+    [switch]$NoCleanupBeforehand
+
+    [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag",
 )
 
-# FInd out whether to cleanup beforehand via mutually exclusive switches, defaulting to Do (true)
-$DoCleanupBeforehand = switch ($PSCmdlet.ParameterSetName) {
-  'Do'    { $true }
-  'Skip'  { $false }
-  default { $true }   # default behavior when neither switch is supplied
+#----------------------------------------------------------------------------------------
+# ---- Validate per-pair mutual exclusivities
+if ($PurgeRestorePoints.IsPresent -and $NoPurgeRestorePoints.IsPresent) {
+    throw "Choose either -PurgeRestorePoints or -NoPurgeRestorePoints, not both."
 }
+if ($CleanupBeforehand.IsPresent -and $NoCleanupBeforehand.IsPresent) {
+    throw "Choose either -CleanupBeforehand or -NoCleanupBeforehand, not both."
+}
+
+# ---- Compute effective booleans with the required defaults
+$DoPurgeRestorePointsBeforehand =
+    if ($PurgeRestorePoints)          { $true }
+    elseif ($NoPurgeRestorePoints)    { $false }
+    else                              { $false }    # default: no purge
+
+$DoCleanupBeforehand =
+    if ($CleanupBeforehand)       { $true }
+    elseif ($NoCleanupBeforehand) { $false }
+    else                          { $true }         # default: do cleanup
+#----------------------------------------------------------------------------------------
 
 # Gate for our Trace Helpers
 # 1. from commandline -Verbose
@@ -158,9 +174,7 @@ function Normalize-DriveToken {
         'bad1'  -> $null
     #>
     param([string]$Token)
-
     if (-not $Token) { return $null }
-
     $t = $Token.Trim()
     if     ($t -match '^[a-zA-Z]$')        { $t += ':' }
     elseif ($t -match '^[a-zA-Z]:\\?$')    { $t  = $t.Substring(0,2) }
@@ -374,6 +388,7 @@ function cleanup_c_windows_temp {
       .OUTPUTS
         $true
     #>
+    $return_code = $false
     $tempPath = "C:\Windows\TEMP"
     if (Test-Path $tempPath) {
         try {
@@ -388,6 +403,7 @@ function cleanup_c_windows_temp {
             $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             $freed = $beforeSize - $afterSize
             Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
+            $return_code = $true
         } catch {
             Write-Warning "WARNING ONLY: Error cleaning $tempPath : $($_.Exception.Message)"
         }
@@ -395,7 +411,7 @@ function cleanup_c_windows_temp {
          Write-Warning "WARNING ONLY: $tempPath folder unavailable for cleaning"
     }
     Check-Abort
-    return $true
+    return $return_code
 }
 
 function cleanup_c_temp_for_every_user {
@@ -406,6 +422,7 @@ function cleanup_c_temp_for_every_user {
     .OUTPUTS
       $true
     #>
+    $return_code = $false
     $userDirs = Get-ChildItem "C:\Users" -Directory | Where-Object {
         $_.Name -notin @("Public", "Default", "Default User", "All Users") -and
         $_.Name -notlike "defaultuser*"
@@ -426,6 +443,7 @@ function cleanup_c_temp_for_every_user {
                 $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
                 Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
+                $return_code = $true
             } catch {
                  Write-Warning "WARNING ONLY: Error cleaning TEMP for $userName : $($_.Exception.Message)"
             }
@@ -435,7 +453,7 @@ function cleanup_c_temp_for_every_user {
     }
     Write-Host "TEMP folders cleanup completed for all users" -ForegroundColor Cyan
     Check-Abort
-    return $true
+    return $return_code
 }
 
 function clear_browser_data_for_all_users {
@@ -446,6 +464,7 @@ function clear_browser_data_for_all_users {
       .OUTPUTS
         $true on success (exit code 0), otherwise $false.
     #>
+    $return_code = $false
     Write-Host 'Stopping running browsers to avoid file locks...'
     Get-Process chrome, msedge, msedgewebview2, firefox, opera, brave -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Check-Abort
@@ -487,6 +506,7 @@ function clear_browser_data_for_all_users {
             $cleaned++
           }
           Write-Host ('  Chrome: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+          $return_code = $true
         } else {
           Write-Host ('  Chrome: no profile root found for ' + $userName) -ForegroundColor Yellow
         }
@@ -524,6 +544,7 @@ function clear_browser_data_for_all_users {
             $cleaned++
           }
           Write-Host ('  Edge: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+          $return_code = $true
         } else {
           Write-Host ('  Edge: no profile root found for ' + $userName) -ForegroundColor Yellow
         }
@@ -551,6 +572,7 @@ function clear_browser_data_for_all_users {
             $cleaned++
           }
           Write-Host ('  Firefox: cleaned ' + $cleaned + ' profile(s) for ' +  $userName) -ForegroundColor Green
+          $return_code = $true
         } else { Write-Host '  Firefox: no profile root found' -ForegroundColor Yellow }
       } catch {
         Write-Host ("  Firefox: " + $_.Exception.Message) -ForegroundColor Red
@@ -558,7 +580,7 @@ function clear_browser_data_for_all_users {
     }
     Write-Host 'Browser cache cleanup completed.' -ForegroundColor Cyan
     Check-Abort
-    return $true
+    return $return_code
 }
 
 function empty_recycle_bins {
@@ -569,14 +591,15 @@ function empty_recycle_bins {
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
+    $return_code = $false
     try {
         Write-Host 'Emptying Recycle Bin for drive C:' -ForegroundColor White
         Trace ("Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue")
         Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
+        $return_code = $true
     } catch {
          Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for drive C: : $($_.Exception.Message)"
-        return $false
     }
     Check-Abort
     try {
@@ -584,13 +607,13 @@ function empty_recycle_bins {
         Trace ("Clear-RecycleBin -Force -ErrorAction Continue")
         Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
+        $return_code = $true
     } catch {
-          Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
-        return $false
+        Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
     }
     Write-Host 'Emptying Recycle Bins on all attached drives completed.' -ForegroundColor Cyan
     Check-Abort
-    return $true
+    return $return_code
 }
 
 function get_cleanmgr_profile_status {
@@ -604,7 +627,7 @@ function get_cleanmgr_profile_status {
     .OUTPUTS
       [pscustomobject] with:
         SageRunId, FlagName, ConfiguredItems, Exists
-#>
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [ValidateRange(0,9999)]
@@ -758,11 +781,12 @@ function run_disk_cleanup_using_cleanmgr_profile {
     }
     if ($exitCode -eq 0) {
         Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Green
-        return $true
+        $return_code = $true
     } else {
         Write-Warning ("WARNING ONLY: Cleanup Drives using cleanmgr /sagerun:{0} exited with code: {1}." -f $SageRunId, $exitCode)
-        return $false
+        $return_code = $false
     }
+    return $return_code
 }
 
 function list_current_restore_points_on_C {
@@ -780,15 +804,18 @@ function list_current_restore_points_on_C {
         $exitCode = $process.ExitCode
         if ($exitCode -ne 0) {
             Write-Warning ("WARNING ONLY: vssadmin List current restore points on drive C: failed with code: {0}" -f $exitCode)
-        #} else {
-        #    Write-Host 'Listed current restore points on drive C: successfully.' -ForegroundColor Green
+            $return_code = $false
+        } else {
+            Write-Host 'Listed current restore points on drive C: successfully.' -ForegroundColor Green
+            $return_code = $true
         }
     } catch {
         Write-Warning ("WARNING ONLY: Failed to List current restore points on drive C: : {0}" -f $_.Exception.Message)
+        $return_code = $false
     }
     Check-Abort
     Write-Host 'List current restore points on drive C: completed.' -ForegroundColor Cyan
-    return $true
+    return $return_code
 }
 
 function enable_system_restore_protection_on_C {
@@ -837,15 +864,18 @@ function enable_system_restore_protection_on_C {
             Enable-ComputerRestore -Drive 'C:' -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
             Write-Host 'System Restore Protection enabled on drive C:' -ForegroundColor Green
+            $return_code = $true
         } catch {
             Write-Warning ("WARNING ONLY: Failed to enable System Restore Protection on drive C: : {0}" -f $($_.Exception.Message))
+            $return_code = $false
         }
     } else {
         Write-Host 'System Restore Protection already enabled on drive C:' -ForegroundColor Green
+        $return_code = $true
     }
     Write-Host 'Enable System Restore Protection on drive C: completed.' -ForegroundColor Cyan
     Check-Abort
-    return $true
+    return $return_code
 }
 
 function resize_shadow_storage_limit_on_c {
@@ -867,30 +897,60 @@ function resize_shadow_storage_limit_on_c {
 
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
-#>
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [ValidateRange(0,200)]
         [int] $shadow_storage_limit_gb
     )
     $shadow_storage_limit_gb_string = '{0}GB' -f ([int]$shadow_storage_limit_gb)
-    Write-Host ("Resize Shadow Storage limit on drive C: to {0}..." -f $shadow_storage_limit_gb_string) -ForegroundColor Yellow
+    Write-Host ("Resize Shadow Storage limit on drive C: to {0}..." -f $shadow_storage_limit_gb_string) -ForegroundColor White
     try {
         Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `@(`"Resize`", `"ShadowStorage`", `"/For=C:`", `"/On=C:`", `"/MaxSize=$shadow_storage_limit_gb_string`"")
         $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("Resize", "ShadowStorage", "/For=C:", "/On=C:", "/MaxSize=$shadow_storage_limit_gb_string") -Wait -PassThru -NoNewWindow
         $exitCode = $process.ExitCode
         if ($exitCode -ne 0) {
             Write-Warning ("WARNING ONLY: Failed to Resize Shadow Storage limit on drive C: to {0} exited with exit code : {1}" -f $shadow_storage_limit_gb_string, $exitCode)
+            $return_code = $false
+        } else {
+            Write-Host ("Resize Shadow Storage limit on drive C: to {0} completed successfully." -f $shadow_storage_limit_gb_string) -ForegroundColor Green
+            $return_code = $true
         }
-        Write-Host ("Resize Shadow Storage limit on drive C: to {0} completed successfully." -f $shadow_storage_limit_gb_string) -ForegroundColor Green
     } catch {
         Write-Warning ("WARNING ONLY: Failed to Resize Shadow Storage limit to {0} on drive C: : {1}" -f $shadow_storage_limit_gb_string, $_.Exception.Message)
+        $return_code = $false
     }
     Check-Abort
-    return $true
+    return $return_code
 }
 
+function PurgeRestorePoints_on_C {
+    <#
+    .SYNOPSIS
+      Puges all System Restore Points on the drive C:
 
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
+    Write-Host ("Purging System Restore Points on drive C: ..." ) -ForegroundColor White
+    try {
+        Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `@(`"delete`", `"shadows`", `"/For=C:`", `"/all`", `"/quiet`"")
+        $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("delete", "shadows", "/For=C:", "/all", "/quiet") -Wait -PassThru -NoNewWindow
+        $exitCode = $process.ExitCode
+        if ($exitCode -ne 0) {
+            Write-Warning ("WARNING ONLY: Failed to Purge System Restore Points on drive C: exited with exit code : {0}" -f $exitCode)
+            $return_code = $false
+        } else{
+            Write-Host ("Purge System Restore Points on drive C: completed successfully.") -ForegroundColor Green
+            $return_code = $true
+        }
+    } catch {
+        Write-Warning ("WARNING ONLY: Failed to Purge System Restore Points on drive C: : {0}" -f $_.Exception.Message)
+        $return_code = $false
+    }
+    Check-Abort
+    return $return_code
+}
 
 
 
@@ -1015,6 +1075,9 @@ if ($DoCleanupBeforehand) {
     $return_status = empty_recycle_bins
     #   run_disk_cleanup_using_cleanmgr_profile -RequireConfiguredProfile -Verbose
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
+}
+if ($DoPurgeRestorePointsBeforehand) {
+    $return_status = PurgeRestorePoints_on_C
 }
 
 $return_status = enable_system_restore_protection_on_C
