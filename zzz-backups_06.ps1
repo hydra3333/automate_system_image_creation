@@ -1,6 +1,4 @@
 <#
-
-
 .SYNOPSIS
   Validate backup target drives and compute required free space with headroom.
 
@@ -52,9 +50,10 @@ $DoCleanupBeforehand = switch ($PSCmdlet.ParameterSetName) {
 # Gate for our Trace Helpers
 # 1. from commandline -Verbose
 $script:IsVerbose = $VerbosePreference -eq 'Continue'
+
 # 2. our own flag to edit in this script, useful during development/debugging
-#$script:enable_trace = $true
-$script:want_trace = $false
+$script:enable_trace = $true
+#$script:want_trace = $false
 
 # Trace helpers
 function Trace([string]$Message) {
@@ -384,7 +383,7 @@ function cleanup_c_windows_temp {
             # Get size before cleanup (for reporting)
             $beforeSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             Write-Host "$tempPath ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB)" -NoNewline
-            Trace ("Remove-Item -Path ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue")
+            Trace ("Remove-Item -Path `"$tempPath\*`" -Recurse -Force -ErrorAction SilentlyContinue")
             Remove-Item -Path "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
             $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
             $freed = $beforeSize - $afterSize
@@ -422,7 +421,7 @@ function cleanup_c_temp_for_every_user {
                 $itemCount = $listing.Count
                 $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
                 Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
-                Trace ("Remove-Item ""$tempPath\*"" -Recurse -Force -ErrorAction SilentlyContinue")
+                Trace ("Remove-Item `"$tempPath\*`" -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
                 $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
@@ -751,13 +750,98 @@ function run_disk_cleanup_using_cleanmgr_profile {
         Write-Warning 'WARNING ONLY: No drive free-space measurements were captured.'
     }
     if ($exitCode -eq 0) {
-        Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId)
+        Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Green
         return $true
     } else {
-        Write-Warning ("WARNING ONLY: Cleanup Drives using cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode)
+        Write-Warning ("WARNING ONLY: Cleanup Drives using cleanmgr /sagerun:{0} exited with code: {1}." -f $SageRunId, $exitCode)
         return $false
     }
 }
+
+function list_current_restore_points_on_C {
+<#
+.SYNOPSIS
+  List current stsrem rstore points on C
+
+.OUTPUTS
+  Listing of current retore points on drive C:
+#>
+    Write-Host 'List of current restore points on drive C:' -ForegroundColor White
+    try {
+        Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `"list`", `"shadows`", `"/for=C:`" -Wait -PassThru -NoNewWindow")
+        $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList "list", "shadows", "/for=C:" -Wait -PassThru -NoNewWindow
+        $exitCode = $process.ExitCode
+        if ($exitCode -ne 0) {
+            Write-Warning ("WARNING ONLY: vssadmin List current restore points on C: drive failed with code: {0}" -f $exitCode)
+        #} else {
+        #    Write-Host 'Listed current restore points on C: drive successfully.' -ForegroundColor Green
+        }
+    } catch {
+        Write-Warning ("WARNING ONLY: Failed to List current restore points on C: drive : {0}" -f $_.Exception.Message)
+    }
+    Check-Abort
+    Write-Host 'List current restore points on C: drive completed.' -ForegroundColor Cyan
+    return $true
+}
+
+function enable_system_restore_protection_on_C {
+<#
+.SYNOPSIS
+  Enable System Restore Protection on drive C:
+
+.OUTPUTS nil
+#>
+    Write-Host 'Enabling System Restore Protection on drive C: (if disabled)...' -ForegroundColor White
+    # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
+    $enableCmd = Get-Command -Name Enable-ComputerRestore -ErrorAction SilentlyContinue
+    if (-not $enableCmd) {
+        $result.Message = 'Enable-ComputerRestore cmdlet not available on this system.'
+        Write-Warning ("WARNING ONLY: System Restore Protection 'Enable-ComputerRestore cmdlet' not available on this system : {0}" -f $result.Message)
+        return $false
+    }
+    $needEnable = $false
+    # Get the Registry hint (present even when SR is disabled)
+    try {
+        Trace ("$srKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue")
+        $srKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue
+        if ($srKey -and ($srKey.DisableSR -eq 1)) {
+            $needEnable = $true
+        }
+    } catch {
+        Write-Warning ("WARNING ONLY: Failed to Get the Registry hint (present even when System Restore is disabled) : {0}" -f $_.Exception.Message)
+    }
+    # Fallback to CIM test (may be null if never enabled)
+    # CIM check (per-drive); if never configured, may be null
+    if (-not $needEnable) {
+        try {
+            Trace ("cfg = Get-CimInstance -Namespace 'root/default' -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { `$_.Drive -eq 'C:' }")
+            $cfg = Get-CimInstance -Namespace 'root/default' -ClassName SystemRestoreConfig -ErrorAction SilentlyContinue | Where-Object { $_.Drive -eq 'C:' }
+            if (-not $cfg -or $cfg.RPSessionInterval -lt 0) {
+                $needEnable = $true
+            }
+        } catch {
+            Write-Warning ("WARNING ONLY: Failed the fallback System Restore Get-CimInstance check : {0}" -f $_.Exception.Message)
+        }
+    }
+    if ($needEnable) {
+        try {
+            Trace ("Enable-ComputerRestore -Drive 'C:' -ErrorAction SilentlyContinue")
+            Enable-ComputerRestore -Drive 'C:' -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+            Write-Host 'System Restore Protection enabled on drive C:' -ForegroundColor Green
+        } catch {
+            Write-Warning ("WARNING ONLY: Failed to enable System Restore Protection on drive C: : {0}" -f $($_.Exception.Message))
+        }
+    } else {
+        Write-Host 'System Restore Protection already enabled on drive C:' -ForegroundColor Green
+    }
+    Write-Host 'Enable System Restore Protection on drive C: completed.' -ForegroundColor Cyan
+    Check-Abort
+    return $true
+}
+
+
+
 
 
 
@@ -881,6 +965,10 @@ if ($DoCleanupBeforehand) {
     #$return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique ) -RequireConfiguredProfile
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
 }
+
+$return_status = list_current_restore_points_on_C
+$return_status = enable_system_restore_protection_on_C
+    
 
 Check-Abort
 
