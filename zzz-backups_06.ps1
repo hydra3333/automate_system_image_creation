@@ -1097,9 +1097,11 @@ Check-Abort
 
 $return_status = enable_system_restore_protection_on_C
 $return_status = resize_shadow_storage_limit_on_C "100"
+
 if ($DoPurgeRestorePointsBeforehand) {
     $return_status = PurgeRestorePoints_on_C
 }
+
 if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_windows_temp
     $return_status = cleanup_c_temp_for_every_user
@@ -1110,7 +1112,6 @@ if ($DoCleanupBeforehand) {
 }
 
 $return_status = create_restore_point_on_C
-#powershell -ExecutionPolicy Bypass -NoProfile -Command "Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'"
 
 $return_status = list_current_restore_points_on_C
 
