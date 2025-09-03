@@ -205,6 +205,7 @@ function Test-TargetDrive {
     $reason       = @()
 
     try {
+        #$Trace ("psd = Get-PSDrive -Name $dl -PSProvider FileSystem -ErrorAction Stop")
         $psd = Get-PSDrive -Name $dl -PSProvider FileSystem -ErrorAction Stop
         $exists = $true
         $freeBytes = [Int64]$psd.Free
@@ -630,6 +631,7 @@ function get_cleanmgr_profile_status {
     }
 }
 
+NEW
 function run_disk_cleanup_using_cleanmgr_profile {
 <#
 .SYNOPSIS
@@ -655,13 +657,16 @@ function run_disk_cleanup_using_cleanmgr_profile {
         [string[]] $MeasureDrives = @('C'),
         [switch]   $RequireConfiguredProfile
     )
+    Trace ("run_disk_cleanup_using_cleanmgr_profile: SageRunId=$SageRunId MeasureDrives=$MeasureDrives RequireConfiguredProfile=$RequireConfiguredProfile")
     Check-Abort
     # Ensure cleanmgr exists
+    Trace "cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue"
     $cmd = Get-Command -Name 'cleanmgr.exe' -ErrorAction SilentlyContinue
     if (-not $cmd) {
         Abort 'cleanmgr.exe not found (Desktop Experience may be missing).' $EXIT.PRECHECK
     }
     # Profile sanity
+    Trace ("status = get_cleanmgr_profile_status -SageRunId $SageRunId")
     $status = get_cleanmgr_profile_status -SageRunId $SageRunId
     if (-not $status.Exists) {
         $msg = "SageRun profile $SageRunId appears unconfigured (no $($status.FlagName) entries)."
@@ -671,25 +676,26 @@ function run_disk_cleanup_using_cleanmgr_profile {
             Write-Warning $msg
         }
     }
-    # --- Measure free space before
+    # --- Measure free space BEFORE
     $before = @{}
     foreach ($d in $MeasureDrives) {
+        Trace "BEFORE 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
+            Trace "psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop"
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
             $before["${letter}:"] = [int64]$psd.Free
+            Trace ("Before[{0}] = {1:N1} GB" -f "$letter:", ($psd.Free/1GB))
         } catch {
             Write-Warning ("WARNING ONLY: Failed to measure free space before cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message)
             continue
         }
     }
     $argList = @("/sagerun:$SageRunId")
-    Trace ("{0} {1}" -f $cmd.Source, ($argList -join ' '))
-    # keep only this formatted trace; remove any old literal `.Source` one
-    Trace ("Start-Process -FilePath {0} -ArgumentList {1} -Wait -PassThru -NoNewWindow" -f $cmd.Source, ($argList -join ' '))
     # --- Run cleanmgr
     $exitCode = 0 # was 1
     try {
+        Trace ("proc = Start-Process -FilePath {0} -ArgumentList {1} -Wait -PassThru -NoNewWindow" -f $cmd.Source, ($argList -join ' '))
         $proc     = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
         $exitCode = $proc.ExitCode
     } catch {
@@ -697,13 +703,16 @@ function run_disk_cleanup_using_cleanmgr_profile {
         # proceed to after-measurement anyway
     }
     Check-Abort
-    # --- Measure free space after
+    # --- Measure free space AFTER
     $after = @{}
     foreach ($d in $MeasureDrives) {
+        Trace "AFTER in 'foreach (d in MeasureDrives)' ... d=$d $MeasureDrives=MeasureDrives")
         try {
             $letter = ($d.TrimEnd(':','\'))[0]
+            Trace "psd = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop"
             $psd    = Get-PSDrive -Name $letter -PSProvider FileSystem -ErrorAction Stop
             $after["${letter}:"] = [int64]$psd.Free
+            Trace ("After [{0}] = {1:N1} GB" -f "$letter:", ($psd.Free/1GB))
         } catch {
             Write-Warning ("WARNING ONLY: Failed to measure free space after cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message)
             continue
@@ -712,6 +721,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
     # --- Build and always print a table (even if Freed is 0.0 or n/a)
     $rows = @(
         foreach ($driveKey in ($before.Keys + $after.Keys | Select-Object -Unique | Sort-Object)) {
+            Trace "'INSIDE loop rows= ... foreach (driveKey in ($before.Keys + $after.Keys | Select-Object -Unique | Sort-Object)) ... curreltly driveKey=$driveKey")
             $b = if ($before.ContainsKey($driveKey)) { [double]$before[$driveKey]/1GB } else { $null }
             $a = if ($after.ContainsKey($driveKey))  { [double]$after[$driveKey]/1GB }  else { $null }
             $f = if ($a -ne $null -and $b -ne $null) { [math]::Round($a - $b, 1) } else { $null }
@@ -725,7 +735,9 @@ function run_disk_cleanup_using_cleanmgr_profile {
     )
     Write-Host ''
     Write-Host 'Disk Cleanup free-space report:' -ForegroundColor Cyan
+    Trace ("About to do if (rows.Count -gt 0) ... rows.Count=$rows.Count)")
     if ($rows.Count -gt 0) {
+        Trace ("Inside if (rows.Count -gt 0) ... rows.Count=$rows.Count)")
         # Render 'n/a' for nulls so you always see a row
         $rows |
             Sort-Object Drive |
@@ -746,6 +758,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
         return $false
     }
 }
+
 
 
 
