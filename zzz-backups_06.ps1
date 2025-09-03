@@ -390,10 +390,10 @@ function cleanup_c_windows_temp {
             $freed = $beforeSize - $afterSize
             Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
         } catch {
-            Write-Host "WARNING ONLY: Error cleaning $tempPath : $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Warning "WARNING ONLY: Error cleaning $tempPath : $($_.Exception.Message)"
         }
     } else {
-        Write-Host "WARNING ONLY: $tempPath folder unavailable for cleaning" -ForegroundColor Yellow
+         Write-Warning "WARNING ONLY: $tempPath folder unavailable for cleaning"
     }
     Check-Abort
     return $true
@@ -428,10 +428,10 @@ function cleanup_c_temp_for_every_user {
                 $freed = $beforeSize - $afterSize
                 Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
             } catch {
-                Write-Host "WARNING ONLY: Error cleaning TEMP for $userName : $($_.Exception.Message)" -ForegroundColor Yellow
+                 Write-Warning "WARNING ONLY: Error cleaning TEMP for $userName : $($_.Exception.Message)"
             }
         } else {
-            Write-Host "WARNING ONLY: User: $userName - No TEMP folder" -ForegroundColor Yellow
+             Write-Warning "WARNING ONLY: User: $userName - No TEMP folder"
         }
     }
     Write-Host "TEMP folders cleanup completed for all users" -ForegroundColor Cyan
@@ -569,7 +569,7 @@ function empty_recycle_bins {
         Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
     } catch {
-        Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
+         Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
         return $false
     }
     Check-Abort
@@ -579,7 +579,7 @@ function empty_recycle_bins {
         Clear-RecycleBin -Force -ErrorAction Continue
         Write-Host 'Emptied Bins on all attached drives successfully.' -ForegroundColor Green
     } catch {
-        Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
+          Write-Warning "WARNING ONLY: Failed to Empty Recycle Bins on all attached drives : $($_.Exception.Message)"
         return $false
     }
     Write-Host 'Emptying Recycle Bins on all attached drives completed.' -ForegroundColor Cyan
@@ -687,7 +687,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
             $before["${letter}:"] = [int64]$psd.Free
             Trace ("Before[{0}] = {1:N1} GB" -f "$($letter):", ($psd.Free/1GB))
         } catch {
-            Write-Warning ("WARNING ONLY: Failed to measure free space before cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message)
+             Write-Warning ("WARNING ONLY: Failed to measure free space before cleanmgr for drive {0}: {1}" -f $d, $_.Exception.Message)
             continue
         }
     }
@@ -699,7 +699,7 @@ function run_disk_cleanup_using_cleanmgr_profile {
         $proc     = Start-Process -FilePath $cmd.Source -ArgumentList $argList -Wait -PassThru -NoNewWindow
         $exitCode = $proc.ExitCode
     } catch {
-        Write-Warning ("WARNING ONLY: Failed to run_disk_cleanup_using_cleanmgr_profile: {0}" -f $_.Exception.Message)
+         Write-Warning ("WARNING ONLY: Failed to run_disk_cleanup_using_cleanmgr_profile: {0}" -f $_.Exception.Message)
         # proceed to after-measurement anyway
     }
     Check-Abort
@@ -748,14 +748,13 @@ function run_disk_cleanup_using_cleanmgr_profile {
             Format-Table -AutoSize |
             Out-Host   # <-- this makes it display even when output is being captured
     } else {
-        Write-Warning 'No drive free-space measurements were captured.'
+        Write-Warning 'WARNING ONLY: No drive free-space measurements were captured.'
     }
     if ($exitCode -eq 0) {
-        Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId) -ForegroundColor Cyan
+        Write-Host ("Cleanup Drives using cleanmgr /sagerun:{0} completed successfully." -f $SageRunId)
         return $true
     } else {
-        Write-Warning ("cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode)
-        Write-Host "Cleanup Drives using cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode -ForegroundColor Yellow
+        Write-Warning ("WARNING ONLY: Cleanup Drives using cleanmgr /sagerun:{0} exited with code {1}." -f $SageRunId, $exitCode)
         return $false
     }
 }
