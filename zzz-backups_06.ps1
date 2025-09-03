@@ -400,11 +400,11 @@ function cleanup_c_windows_temp {
 
 function cleanup_c_temp_for_every_user {
     <#
-      .SYNOPSIS
-        cleanup user TEMP folders for every user
+    .SYNOPSIS
+      cleanup user TEMP folders for every user
 
-      .OUTPUTS
-        $true
+    .OUTPUTS
+      $true
     #>
     $userDirs = Get-ChildItem "C:\Users" -Directory | Where-Object {
         $_.Name -notin @("Public", "Default", "Default User", "All Users") -and
@@ -562,11 +562,13 @@ function clear_browser_data_for_all_users {
 }
 
 function empty_recycle_bins {
-    
-    
-.OUTPUTS
-  $true on success (exit code 0), otherwise $false.
-    
+    <#
+    .SYNOPSIS
+      empties recycle nins on all attached rrives
+
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
     try {
         Write-Host 'Emptying Recycle Bin for drive C:' -ForegroundColor White
         Trace ("Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue")
@@ -1011,13 +1013,16 @@ if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_temp_for_every_user
     $return_status = clear_browser_data_for_all_users
     $return_status = empty_recycle_bins
-    #$return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique ) -RequireConfiguredProfile
+    #   run_disk_cleanup_using_cleanmgr_profile -RequireConfiguredProfile -Verbose
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives (@('C') + @($validTargets) | ForEach-Object { ($_.TrimEnd(':','\')) + ':' } | Select-Object -Unique )
 }
 
-$return_status = list_current_restore_points_on_C
 $return_status = enable_system_restore_protection_on_C
-$return_status = resize_shadow_storage_limit_on_c "100GB"
+$return_status = resize_shadow_storage_limit_on_c "100"
+$return_status = list_current_restore_points_on_C
+
+
+
 
 Check-Abort
 
