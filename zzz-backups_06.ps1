@@ -444,7 +444,7 @@ function clear_browser_data_for_all_users {
         cleanup browser data (Chrome, Edge, Firefox) for every user
 
       .OUTPUTS
-        $true
+        $true on success (exit code 0), otherwise $false.
     #>
     Write-Host 'Stopping running browsers to avoid file locks...'
     Get-Process chrome, msedge, msedgewebview2, firefox, opera, brave -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -562,13 +562,18 @@ function clear_browser_data_for_all_users {
 }
 
 function empty_recycle_bins {
+    
+    
+.OUTPUTS
+  $true on success (exit code 0), otherwise $false.
+    
     try {
-        Write-Host 'Emptying Recycle Bin for C: drive' -ForegroundColor White
+        Write-Host 'Emptying Recycle Bin for drive C:' -ForegroundColor White
         Trace ("Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue")
         Clear-RecycleBin -DriveLetter C -Force -ErrorAction Continue
         Write-Host 'Emptied Recycle Bin for C: successfully.' -ForegroundColor Green
     } catch {
-         Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for C: drive : $($_.Exception.Message)"
+         Write-Warning "WARNING ONLY: Failed to Empty Recycle Bin for drive C: : $($_.Exception.Message)"
         return $false
     }
     Check-Abort
@@ -587,16 +592,16 @@ function empty_recycle_bins {
 }
 
 function get_cleanmgr_profile_status {
-<#
-.SYNOPSIS
-  Check if a CleanMgr /sagerun profile is configured.
+    <# 
+    .SYNOPSIS
+      Check if a CleanMgr /sagerun profile is configured.
 
-.PARAMETER SageRunId
-  Integer profile id used with /sagerun:n and /sageset:n.
+    .PARAMETER SageRunId
+      Integer profile id used with /sagerun:n and /sageset:n.
 
-.OUTPUTS
-  [pscustomobject] with:
-    SageRunId, FlagName, ConfiguredItems, Exists
+    .OUTPUTS
+      [pscustomobject] with:
+        SageRunId, FlagName, ConfiguredItems, Exists
 #>
     param(
         [Parameter(Mandatory = $true)]
@@ -631,23 +636,23 @@ function get_cleanmgr_profile_status {
 }
 
 function run_disk_cleanup_using_cleanmgr_profile {
-<#
-.SYNOPSIS
-  Run Disk Cleanup with a given /sagerun profile, with safety checks
-  and a free-space before/after report.
+    <#
+    .SYNOPSIS
+      Run Disk Cleanup with a given /sagerun profile, with safety checks
+      and a free-space before/after report.
 
-.PARAMETER SageRunId
-  Integer profile id (must have been configured via cleanmgr /sageset:<id>).
+    .PARAMETER SageRunId
+      Integer profile id (must have been configured via cleanmgr /sageset:<id>).
 
-.PARAMETER MeasureDrives
-  Drives to measure free space on before/after (e.g. 'C','D').
+    .PARAMETER MeasureDrives
+      Drives to measure free space on before/after (e.g. 'C','D').    
 
-.PARAMETER RequireConfiguredProfile
-  If set, refuse to run when the specified profile has no configured items.
+    .PARAMETER RequireConfiguredProfile
+      If set, refuse to run when the specified profile has no configured items.
 
-.OUTPUTS
-  $true on success (exit code 0), otherwise $false.
-#>
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [ValidateRange(0,9999)]
@@ -690,8 +695,8 @@ function run_disk_cleanup_using_cleanmgr_profile {
             continue
         }
     }
-    $argList = @("/sagerun:$SageRunId")
     # --- Run cleanmgr
+    $argList = @("/sagerun:$SageRunId")
     $exitCode = 0 # was 1
     try {
         Trace ("proc = Start-Process -FilePath {0} -ArgumentList {1} -Wait -PassThru -NoNewWindow" -f $cmd.Source, ($argList -join ' '))
@@ -759,38 +764,39 @@ function run_disk_cleanup_using_cleanmgr_profile {
 }
 
 function list_current_restore_points_on_C {
-<#
-.SYNOPSIS
-  List current stsrem rstore points on C
+    <#
+    .SYNOPSIS
+      List current stsrem rstore points on C
 
-.OUTPUTS
-  Listing of current retore points on drive C:
-#>
+    .OUTPUTS
+      Listing of current retore points on drive C:
+    #>
     Write-Host 'List of current restore points on drive C:' -ForegroundColor White
     try {
-        Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `"list`", `"shadows`", `"/for=C:`" -Wait -PassThru -NoNewWindow")
-        $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList "list", "shadows", "/for=C:" -Wait -PassThru -NoNewWindow
+        Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @(`"list`", `"shadows`", `"/for=C:`") -Wait -PassThru -NoNewWindow")
+        $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("list", "shadows", "/for=C:") -Wait -PassThru -NoNewWindow
         $exitCode = $process.ExitCode
         if ($exitCode -ne 0) {
-            Write-Warning ("WARNING ONLY: vssadmin List current restore points on C: drive failed with code: {0}" -f $exitCode)
+            Write-Warning ("WARNING ONLY: vssadmin List current restore points on drive C: failed with code: {0}" -f $exitCode)
         #} else {
-        #    Write-Host 'Listed current restore points on C: drive successfully.' -ForegroundColor Green
+        #    Write-Host 'Listed current restore points on drive C: successfully.' -ForegroundColor Green
         }
     } catch {
-        Write-Warning ("WARNING ONLY: Failed to List current restore points on C: drive : {0}" -f $_.Exception.Message)
+        Write-Warning ("WARNING ONLY: Failed to List current restore points on drive C: : {0}" -f $_.Exception.Message)
     }
     Check-Abort
-    Write-Host 'List current restore points on C: drive completed.' -ForegroundColor Cyan
+    Write-Host 'List current restore points on drive C: completed.' -ForegroundColor Cyan
     return $true
 }
 
 function enable_system_restore_protection_on_C {
-<#
-.SYNOPSIS
-  Enable System Restore Protection on drive C:
+    <#
+    .SYNOPSIS
+      Enable System Restore Protection on drive C:
 
-.OUTPUTS nil
-#>
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+    #>
     Write-Host 'Enabling System Restore Protection on drive C: (if disabled)...' -ForegroundColor White
     # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
     $enableCmd = Get-Command -Name Enable-ComputerRestore -ErrorAction SilentlyContinue
@@ -839,6 +845,49 @@ function enable_system_restore_protection_on_C {
     Check-Abort
     return $true
 }
+
+function resize_shadow_storage_limit_on_c {
+    <#
+    .SYNOPSIS
+      Resizes the shadow storage limit on the drive C: to the nominated number of gigabytes.
+      It is the disk space cap for Windows’ Volume Shadow Copy Service (VSS) on drive C:
+      When Windows makes restore points / previous versions, it stores the changed-data (“diffs”)
+      in a hidden shadow storage area under C:\System Volume Information.
+      "Resize the shadow storage limit to N GB" means:
+        Set the maximum space VSS is allowed to use on C: to N gigabytes.
+        If the diff area grows past that limit, older restore points are purged automatically.
+        Raising the limit keeps more restore points; lowering it may immediately delete older ones to get under the new cap.
+        This does not resize the drive C: partition; it just changes the quota for VSS data.
+        Shadow storage must live on an NTFS volume; you can keep it on C: or even place it on another NTFS drive.
+
+    .PARAMETER shadow_storage_limit_gb
+      The number of gigagytes to resize the shadow storage limit to.
+
+    .OUTPUTS
+      $true on success (exit code 0), otherwise $false.
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(0,200)]
+        [int] $shadow_storage_limit_gb
+    )
+    $shadow_storage_limit_gb_string = '{0}GB' -f ([int]$shadow_storage_limit_gb)
+    Write-Host ("Resize Shadow Storage limit on drive C: to {0}..." -f $shadow_storage_limit_gb_string) -ForegroundColor Yellow
+    try {
+        Trace ("process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList `@(`"Resize`", `"ShadowStorage`", `"/For=C:`", `"/On=C:`", `"/MaxSize=$shadow_storage_limit_gb_string`"")
+        $process = Start-Process -FilePath 'vssadmin.exe' -ArgumentList @("Resize", "ShadowStorage", "/For=C:", "/On=C:", "/MaxSize=$shadow_storage_limit_gb_string") -Wait -PassThru -NoNewWindow
+        $exitCode = $process.ExitCode
+        if ($exitCode -ne 0) {
+            Write-Warning ("WARNING ONLY: Failed to Resize Shadow Storage limit on drive C: to {0} exited with exit code : {1}" -f $shadow_storage_limit_gb_string, $exitCode)
+        }
+        Write-Host ("Resize Shadow Storage limit on drive C: to {0} completed successfully." -f $shadow_storage_limit_gb_string) -ForegroundColor Green
+    } catch {
+        Write-Warning ("WARNING ONLY: Failed to Resize Shadow Storage limit to {0} on drive C: : {1}" -f $shadow_storage_limit_gb_string, $_.Exception.Message)
+    }
+    Check-Abort
+    return $true
+}
+
 
 
 
@@ -968,7 +1017,7 @@ if ($DoCleanupBeforehand) {
 
 $return_status = list_current_restore_points_on_C
 $return_status = enable_system_restore_protection_on_C
-    
+$return_status = resize_shadow_storage_limit_on_c "100GB"
 
 Check-Abort
 
