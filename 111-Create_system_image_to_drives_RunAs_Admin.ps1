@@ -952,30 +952,124 @@ function PurgeRestorePoints_on_C {
     return $return_code
 }
 
+function SetSystemRestoreFrequency {
+    <#
+    .SYNOPSIS
+        Create, update, or delete the SystemRestorePointCreationFrequency registry value.
+
+    .PARAMETER Action
+        "Set"    (default) → Set the value to the proposed minutes.
+        "Delete" → Remove the value to fall back to the Microsoft default (1440 minutes).
+        eg  SetSystemRestoreFrequency -Action Set -Minutes 5   # Set to 5 minutes
+            SetSystemRestoreFrequency -Action Delete           # Delete value (revert to 1440)
+    .PARAMETER Minutes
+        Minutes between restore point creation (only used when Action=Set). Default = 1
+    #>
+    param(
+        [ValidateSet("Set","Delete")]
+        [string] $Action = "Set",
+        [int] $Minutes = 1
+    )
+    $SRP_RegistryPath = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    $SRP_RegistryValueName = "SystemRestorePointCreationFrequency"
+    $return_code = $true
+
+    # Ensure the registry key exists (should already, but safe)
+    try {
+        if (-not (Test-Path $SRP_RegistryPath)) {
+            New-Item -Path $SRP_RegistryPath -Force | Out-Null
+        }
+    } catch {
+        Write-Warning "Unable to ensure registry key $SRP_RegistryPath exists : $($_.Exception.Message)"
+        return $false
+    }
+    # --- Get and show the current value if it exists
+    try {
+        $current = Get-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -ErrorAction Stop
+        $SRP_Registry_previous_value = $current.$SRP_RegistryValueName
+        Write-Host "Current $SRP_RegistryValueName value: $SRP_Registry_previous_value minutes"
+    } catch {
+        Write-Host "$SRP_RegistryValueName does not exist in $SRP_RegistryPath, using Microsoft default value 1440"
+        $SRP_Registry_previous_value = 1440
+    }
+    if ($Action -eq "Set") {
+        # --- Set/Update the registry value
+        try {
+            New-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -PropertyType DWord -Value $Minutes -Force | Out-Null
+            Write-Host "$SRP_RegistryValueName (re)set to $Minutes minute(s) in $SRP_RegistryPath"
+        } catch {
+            Write-Warning "WARNING ONLY: Unable to set registry $SRP_RegistryValueName in $SRP_RegistryPath : $($_.Exception.Message)"
+            $return_code = $false
+        }
+    }
+    elseif ($Action -eq "Delete") {
+        # --- Check if the value exists
+        $exists = $false
+        try {
+            if (Get-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -ErrorAction Stop) {
+                $exists = $true
+            }
+        } catch {
+            Write-Host "$SRP_RegistryValueName not found in $SRP_RegistryPath, nothing to remove."
+        }
+        # --- Attempt removal if it exists
+        if ($exists) {
+            try {
+                Remove-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName
+                Write-Host "$SRP_RegistryValueName removed from $SRP_RegistryPath. Windows will fall back to default (1440 minutes)."
+            } catch {
+                Write-Warning "WARNING ONLY: Unable to remove registry $SRP_RegistryValueName from $SRP_RegistryPath : $($_.Exception.Message)"
+                $return_code = $false
+            }
+        }
+    }
+    else {
+        # --- Somehow an invalid action in this function
+        Write-Warning "WARNING ONLY: SetSystemRestoreFrequency - invalid action : $Action ... nothing done"
+        $return_code = $false
+    }
+    return $return_code
+}
+
 function create_restore_point_on_C {
     <#
     .SYNOPSIS
-      Creates a System Restore Point on the drive C:
+      Creates a System Restore Point on drive C:
 
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
     Write-Host 'Creating a System Restore Point on drive C:  ...' -ForegroundColor Cyan
-    # Ensure cmdlet exists on this system (Server Core or stripped images may lack it)
-    #powershell -ExecutionPolicy Bypass -NoProfile -Command "Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'"
-
-    $enableCmd = Get-Command -Name "Checkpoint-Computer" -ErrorAction SilentlyContinue
-    if (-not $enableCmd) {
-        $result.Message = 'Checkpoint-Computer cmdlet not available on this system.'
-        Write-Warning ("WARNING ONLY: System Restore Point creation 'Checkpoint-Computer cmdlet' not available on this system : {0}" -f $result.Message)
+    # Check that the cmdlet exists (on some editions it may be missing)
+    try {
+        $enableCmd = Get-Command -Name "Checkpoint-Computer" -ErrorAction Stop
+    } catch {
+        Write-Warning ("WARNING ONLY: 'Checkpoint-Computer' cmdlet not available on this system : {0}" -f $($_.Exception.Message))
         return $false
     }
+    # Ensure System Protection is enabled on C: (no-op if already on)
+    try {
+        Enable-ComputerRestore -Drive "C:\" -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning ("WARNING ONLY: Could not (re)enable System Protection on drive C: : {0}" -f $($_.Exception.Message))
+        # not fatal — continue, Checkpoint-Computer will still tell us if it fails
+    }
+    # (re)Set the value of microsoft enforced minutes between creating consecutive System Restore Points
+    try {
+        $ok = SetSystemRestoreFrequency -Action Set -Minutes 1
+        if (-not $ok) { 
+            Write-Warning "WARNING ONLY: SetSystemRestoreFrequency reported failure (continuing)"
+        }
+    } catch {
+        Write-Warning ("WARNING ONLY: SetSystemRestoreFrequency threw: {0}" -f $($_.Exception.Message))
+    }
+    # Create the restore point
+    $return_code = $true
     try {
         Trace ("Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'")
         Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'
         Start-Sleep -Seconds 3
         Write-Host 'Created System Restore Point on drive C:' -ForegroundColor Green
-        $return_code = $true
     } catch {
         Write-Warning ("WARNING ONLY: Failed to create System Restore Point on drive C: : {0}" -f $($_.Exception.Message))
         $return_code = $false
