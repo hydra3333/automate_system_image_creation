@@ -14,6 +14,14 @@
 ::     If wanting a single " in the powershell script, use  "" which gets mangled down to 1 same rule for parameters)
 :: =============================================================================
 
+rem Check for this being run with admin rights
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo This script must be run as Administrator.  Right-click on it and choose 'Run As Administrator'
+    pause
+    exit /b 1
+)
+
 cd "%~dp0"
 set "sageset_profile=1"
 
