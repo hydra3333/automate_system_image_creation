@@ -18,7 +18,7 @@ used by professionals across the globe.
 - **EFI System Partition (ESP)** containing boot loaders and firmware settings
 - **Recovery partition** with Windows Recovery Environment (WinRE)
 - **Boot Configuration Data (BCD)** and system state information
-- **Any additional partitions** marked as critical for system operation
+- **Any additional partitions** marked as critical for system operation (but perhaps not non-windows ones)
 
 **Recovery/Restoration options using Windows System Images:**
 - **Windows Recovery Environment (WinRE)** - Access via Windows `Advanced Startup Options`
