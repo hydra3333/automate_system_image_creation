@@ -106,7 +106,7 @@ Final Required = Base Estimate × (1 + Headroom_PCT/100)
 
 2. **Modify the batch files** to customize your chosen target drives to create System Image Backups onto:
    ```batch
-   SET "TARGET_DRIVE_LIST=D: E: G:"
+   SET "TARGET_DRIVE_LIST=D: G: T:"
    ```
 **NOTE:** Some drives (C: E: U:) are auto forbidden from being target drives by default using a 'fixed' parameter inside the .ps1 script; hence edit the .ps1 script to suit your own hard exclusions if any.
 
@@ -117,11 +117,11 @@ Final Required = Base Estimate × (1 + Headroom_PCT/100)
 ```powershell
 # This must be Run AS Administrator from a cmd window or Run As
 
-# Basic usage - backup to drives D: and E: with 30% headroom
-powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_drives_RunAs_Admin.ps1" -Target_Drives_List "D: E:" -Headroom_PCT 30 -NoCleanupBeforehand -NoPurgeRestorePoints 
+# Basic usage - backup to drives D: and G: with 30% headroom
+powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_drives_RunAs_Admin.ps1" -Target_Drives_List "D: G:" -Headroom_PCT 30 -NoCleanupBeforehand -NoPurgeRestorePoints 
 
 # With 2 types of cleanup and verbose output
-powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_drives_RunAs_Admin.ps1" -Target_Drives_List "D: E: G:" -Headroom_PCT 40 -CleanupBeforehand -PurgeRestorePoints -Verbose
+powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_drives_RunAs_Admin.ps1" -Target_Drives_List "D: G: T:" -Headroom_PCT 40 -CleanupBeforehand -PurgeRestorePoints -Verbose
 ```
 
 ## Parameters
@@ -130,7 +130,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `Target_Drives_List` | String | Space-separated list of target drive letters (e.g., "D: E: G:") |
+| `Target_Drives_List` | String | Space-separated list of target drive letters (e.g., "D: G: T:") |
 
 ### Optional Parameters
 
@@ -149,17 +149,17 @@ The **bolded** values are the defaults when no switches are specified.
 
 ### Example 1: Simple Backup to Two Drives using defaults
 ```powershell
-.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "D: E:" -Headroom_PCT 35
+.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "D: G:" -Headroom_PCT 35
 ```
 
 ### Example 2: Full pre-Imaging Cleanup with Restore Points Purge
 ```powershell
-.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "D: E: G: T:" -Headroom_PCT 40 -CleanupBeforehand -PurgeRestorePoints -Verbose
+.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "D: G: H: T:" -Headroom_PCT 40 -CleanupBeforehand -PurgeRestorePoints -Verbose
 ```
 
 ### Example 3: Backup Without Any pre-Imaging Cleanup or Restore Points Purge
 ```powershell
-.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "G: Y:" -NoCleanupBeforehand -NoPurgeRestorePoints
+.\111-Create_system_image_to_drives_RunAs_Admin.ps1 -Target_Drives_List "G: T:" -NoCleanupBeforehand -NoPurgeRestorePoints
 ```
 
 ## Customizing Batch Files
@@ -168,7 +168,7 @@ Edit the batch file variables to suit your needs:
 
 ```batch
 :: Target drives (modify as needed)
-SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
+SET "TARGET_DRIVE_LIST=D: G: T: I: Y:"
 
 :: Headroom percentage
 set "Headroom_PCT=-Headroom_PCT 40"
@@ -214,7 +214,7 @@ The script uses structured exit codes:
 
 **"Drive not found"**
 - Ensure the target drive letters are correct and drives are connected
-- Use format "D: E:" (with colons and spaces)
+- Use format "D: G:" (with colons and spaces)
 
 **"Insufficient space"**
 - Increase the nominated headroom percentage which will auto-exclude drives without enough free disk space
