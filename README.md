@@ -14,7 +14,7 @@ and can restore your system disk to the state it was in when the backup was perf
 used by professionals across the globe.
 
 **What's included in a Windows System Image (it's a lot, and extremely handy):**
-- **System partition** (typically C:) with all installed programs, settings, and user data
+- **System partition** (typically C:) with all installed programs, settings, registry hive, and user data
 - **EFI System Partition (ESP)** containing boot loaders and firmware settings
 - **Recovery partition** with Windows Recovery Environment (WinRE)
 - **Boot Configuration Data (BCD)** and system state information
