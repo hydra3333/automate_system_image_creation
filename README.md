@@ -7,7 +7,7 @@ A PowerShell script for creating native Windows System Image backups to multiple
 
 ## About Windows System Images
 
-Windows System Image backups create complete, bit-for-bit copies of your system drive and critical boot partitions.
+Windows System Image backups create complete, bit-for-bit copies of your system drive and critical boot partitions.    
 These system images are 100% created by, and automatically detected by, Windows 10/11's built-in recovery tools and can restore
 your entire system to exactly the state it was in when the backup was performed.
 
