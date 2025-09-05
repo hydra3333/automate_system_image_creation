@@ -3,13 +3,13 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-lightgrey)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-green) 
 
-A PowerShell script for creating Windows System Image backups to multiple 'target drives' with advanced validation, cleanup options, and progress step reporting.
+A PowerShell script for creating native Windows System Image backups to multiple 'target drives' with advanced validation, cleanup options, and progress step reporting.
 
 ## About Windows System Images
 
 Windows System Image backups create complete, bit-for-bit copies of your system drive and critical boot partitions.
-These images are automatically detected by Windows 10/11's built-in recovery tools and can restore your entire system
-to exactly the state it was in when the backup was performed.
+These system images are created by, and automatically detected by, Windows 10/11's built-in recovery tools and can restore
+your entire system to exactly the state it was in when the backup was performed.
 
 **What's included in a Windows System Image (it's a lot, and extremely handy):**
 - **System partition** (typically C:) with all installed programs, settings, and user data
