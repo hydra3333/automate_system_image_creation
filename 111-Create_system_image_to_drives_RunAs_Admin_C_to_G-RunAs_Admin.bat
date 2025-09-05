@@ -31,16 +31,15 @@ set "Verbose="
 
 :: --- If we want to perform cleanups, set it here ---
 set "CleanupBeforehand=-CleanupBeforehand"
-REM set "CleanupBeforehand="
+REM set "CleanupBeforehand=-NoCleanupBeforehand"
 
 :: --- If we want to Purge Restore Points, set it here ---
 set "PurgeRestorePoints=-PurgeRestorePoints"
-REM set "PurgeRestorePoints="
+REM set "PurgeRestorePoints=-NoPurgeRestorePoints"
 
 :: --- If we want to set additional disk headroom for the system image target, set it here ---
 REM set "Headroom_PCT=-Headroom_PCT 35"
 set "Headroom_PCT=-Headroom_PCT 40"
-
 set "ps1_path=%~dp0111-Create_system_image_to_drives_RunAs_Admin.ps1"
 
 REM ----------------------------------------------------------------------------------

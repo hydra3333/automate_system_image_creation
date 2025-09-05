@@ -837,7 +837,7 @@ function enable_system_restore_protection_on_C {
     $needEnable = $false
     # Get the Registry hint (present even when SR is disabled)
     try {
-        Trace ("$srKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue")
+        Trace ("srKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue")
         $srKey = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue
         if ($srKey -and ($srKey.DisableSR -eq 1)) {
             $needEnable = $true
@@ -958,10 +958,11 @@ function SetSystemRestoreFrequency {
         Create, update, or delete the SystemRestorePointCreationFrequency registry value.
 
     .PARAMETER Action
-        "Set"    (default) → Set the value to the proposed minutes.
-        "Delete" → Remove the value to fall back to the Microsoft default (1440 minutes).
+        "Set"    (default) -> Set the value to the proposed minutes.
+        "Delete" -> Remove the value to fall back to the Microsoft default (1440 minutes).
         eg  SetSystemRestoreFrequency -Action Set -Minutes 5   # Set to 5 minutes
             SetSystemRestoreFrequency -Action Delete           # Delete value (revert to 1440)
+
     .PARAMETER Minutes
         Minutes between restore point creation (only used when Action=Set). Default = 1
     #>
@@ -970,32 +971,74 @@ function SetSystemRestoreFrequency {
         [string] $Action = "Set",
         [int] $Minutes = 1
     )
-    $SRP_RegistryPath = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore"
-    $SRP_RegistryValueName = "SystemRestorePointCreationFrequency"
-    $return_code = $true
-
-    # Ensure the registry key exists (should already, but safe)
+    # Set default values
+    $fn                          = $MyInvocation.MyCommand.Name
+    $SRP_Registry_previous_value = 1440   # Microsoft default if missing
+    $SRP_Registry_new_value      = $null
+    $SRP_RegistryPath            = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore"
+    $SRP_RegistryValueName       = "SystemRestorePointCreationFrequency"
+    $return_code                 = $true
+    #
+    # Basic validation
+    if ($Action -eq "Set" -and $Minutes -lt 1) {
+        Write-Warning "Invalid Minutes value '$Minutes'. It must be a positive integer."
+        return [PSCustomObject]@{
+            ReturnCode          = $false
+            Action              = $Action
+            PreviousVal_minutes = $SRP_Registry_previous_value
+            NewVal_minutes      = $SRP_Registry_new_value
+            ErrorMessage        = "Invalid Minutes: $Minutes"
+        }
+    }
+    #
+    if ($Action -eq "Set") {
+        Write-Host "ACTION: $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName = $Minutes minutes" -ForegroundColor White
+    }
+    elseif ($Action -eq "Delete") {
+        Write-Host "ACTION: $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName" -ForegroundColor White
+    }
+    else {
+        Write-Warning "WARNING ONLY: $fn - invalid action : $Action ... nothing done"
+        return [PSCustomObject]@{
+            ReturnCode          = $false
+            Action              = $Action
+            PreviousVal_minutes = $SRP_Registry_previous_value
+            NewVal_minutes      = $SRP_Registry_new_value
+            ErrorMessage        = "Invalid Action $Action for $fn"
+        }
+    }
+    # Ensure the registry key path exists (defensive)
     try {
+        Trace "$fn Test-Path $SRP_RegistryPath)"
         if (-not (Test-Path $SRP_RegistryPath)) {
+            Trace "$fn New-Item -Path $SRP_RegistryPath -Force | Out-Null)"
             New-Item -Path $SRP_RegistryPath -Force | Out-Null
         }
     } catch {
-        Write-Warning "Unable to ensure registry key $SRP_RegistryPath exists : $($_.Exception.Message)"
-        return $false
+        Write-Warning "WARNING ONLY: Unable to ensure registry key path $SRP_RegistryPath exists : $($_.Exception.Message)"
+        return [PSCustomObject]@{
+            ReturnCode          = $false
+            Action              = $Action
+            PreviousVal_minutes = $SRP_Registry_previous_value
+            NewVal_minutes      = $SRP_Registry_new_value
+            ErrorMessage        = $_.Exception.Message
+        }
     }
     # --- Get and show the current value if it exists
     try {
+        Trace "$fn Get-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -ErrorAction Stop"
         $current = Get-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -ErrorAction Stop
-        $SRP_Registry_previous_value = $current.$SRP_RegistryValueName
-        Write-Host "Current $SRP_RegistryValueName value: $SRP_Registry_previous_value minutes"
+        $SRP_Registry_previous_value = [int]$current.$SRP_RegistryValueName
+        Write-Host "Existing -Path $SRP_RegistryPath -Name $SRP_RegistryValueName value=$SRP_Registry_previous_value minutes"
     } catch {
-        Write-Host "$SRP_RegistryValueName does not exist in $SRP_RegistryPath, using Microsoft default value 1440"
-        $SRP_Registry_previous_value = 1440
+        Write-Host "$SRP_RegistryValueName does not exist in $SRP_RegistryPath, using Microsoft default value $SRP_Registry_previous_value as previous value"
     }
     if ($Action -eq "Set") {
         # --- Set/Update the registry value
         try {
+            Trace "$fn New-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -PropertyType DWord -Value $Minutes -Force | Out-Null"
             New-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName -PropertyType DWord -Value $Minutes -Force | Out-Null
+            $SRP_Registry_new_value = $Minutes
             Write-Host "$SRP_RegistryValueName (re)set to $Minutes minute(s) in $SRP_RegistryPath"
         } catch {
             Write-Warning "WARNING ONLY: Unable to set registry $SRP_RegistryValueName in $SRP_RegistryPath : $($_.Exception.Message)"
@@ -1015,20 +1058,41 @@ function SetSystemRestoreFrequency {
         # --- Attempt removal if it exists
         if ($exists) {
             try {
+                Trace "Remove-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName"
                 Remove-ItemProperty -Path $SRP_RegistryPath -Name $SRP_RegistryValueName
+                $SRP_Registry_new_value = $null  # missing -> Windows uses 1440
                 Write-Host "$SRP_RegistryValueName removed from $SRP_RegistryPath. Windows will fall back to default (1440 minutes)."
             } catch {
                 Write-Warning "WARNING ONLY: Unable to remove registry $SRP_RegistryValueName from $SRP_RegistryPath : $($_.Exception.Message)"
                 $return_code = $false
             }
+        } else {
+            $SRP_Registry_new_value = $null  # already at default behavior
+        }
+    }
+    if ($return_code) {
+        if ($Action -eq "Set") {
+            Write-Host "Successfully completed $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName = $Minutes minutes" -ForegroundColor Cyan
+        }
+        elseif ($Action -eq "Delete") {
+            Write-Host "Successfully completed $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName" -ForegroundColor Cyan
         }
     }
     else {
-        # --- Somehow an invalid action in this function
-        Write-Warning "WARNING ONLY: SetSystemRestoreFrequency - invalid action : $Action ... nothing done"
-        $return_code = $false
+        if ($Action -eq "Set") {
+            Write-Host "Unsuccessfully completed $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName = $Minutes minutes" -ForegroundColor Yellow
+        }
+        elseif ($Action -eq "Delete") {
+            Write-Host "Unsuccessfully completed $fn $Action registry key $SRP_RegistryPath - $SRP_RegistryValueName" -ForegroundColor Yellow
+        }
     }
-    return $return_code
+    # Return structured info
+    return [PSCustomObject]@{
+        ReturnCode          = $return_code
+        Action              = $Action
+        PreviousVal_minutes = $SRP_Registry_previous_value
+        NewVal_minutes      = $SRP_Registry_new_value
+    }
 }
 
 function create_restore_point_on_C {
@@ -1053,15 +1117,6 @@ function create_restore_point_on_C {
     } catch {
         Write-Warning ("WARNING ONLY: Could not (re)enable System Protection on drive C: : {0}" -f $($_.Exception.Message))
         # not fatal — continue, Checkpoint-Computer will still tell us if it fails
-    }
-    # (re)Set the value of microsoft enforced minutes between creating consecutive System Restore Points
-    try {
-        $ok = SetSystemRestoreFrequency -Action Set -Minutes 1
-        if (-not $ok) { 
-            Write-Warning "WARNING ONLY: SetSystemRestoreFrequency reported failure (continuing)"
-        }
-    } catch {
-        Write-Warning ("WARNING ONLY: SetSystemRestoreFrequency threw: {0}" -f $($_.Exception.Message))
     }
     # Create the restore point
     $return_code = $true
@@ -1245,7 +1300,21 @@ if ($DoCleanupBeforehand) {
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @(@('C:') +  $ValidTargetDrive_list)
 }
 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Temporarily Set/reset the value of microsoft enforced minutes between creating consecutive System Restore Points
+$result_object = SetSystemRestoreFrequency -Action Set -Minutes 1
+$return_status       = $result_object.ReturnCode
+$PreviousVal_minutes = $result_object.PreviousVal_minutes
+$NewVal_minutes      = $result_object.NewVal_minutes
+Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $result_object)
+#
 $return_status = create_restore_point_on_C
+#
+$result_object = SetSystemRestoreFrequency -Action Set -Minutes $PreviousVal_minutes
+$return_status = $result_object.ReturnCode
+$PreviousVal_minutes_reset = $result_object.PreviousVal_minutes
+Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $result_object)
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 $return_status = list_current_restore_points_on_C
 

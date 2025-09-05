@@ -30,12 +30,12 @@ REM set "Verbose=-Verbose"
 set "Verbose="
 
 :: --- If we want to perform cleanups, set it here ---
-set "CleanupBeforehand=-CleanupBeforehand"
-REM set "CleanupBeforehand=-NoCleanupBeforehand"
+REM set "CleanupBeforehand=-CleanupBeforehand"
+set "CleanupBeforehand=-NoCleanupBeforehand"
 
 :: --- If we want to Purge Restore Points, set it here ---
-set "PurgeRestorePoints=-PurgeRestorePoints"
-REM set "PurgeRestorePoints=-NoPurgeRestorePoints"
+REM set "PurgeRestorePoints=-PurgeRestorePoints"
+set "PurgeRestorePoints=-NoPurgeRestorePoints"
 
 :: --- If we want to set additional disk headroom for the system image target, set it here ---
 REM set "Headroom_PCT=-Headroom_PCT 35"
