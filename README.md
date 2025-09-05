@@ -1,5 +1,8 @@
 # Automated Windows System Image Backup Script
 
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-lightgrey)
+![License](https://img.shields.io/badge/license-AGPL--3.0-green) 
+
 A PowerShell script for creating Windows System Image backups to multiple 'target drives' with advanced validation, cleanup options, and progress step reporting.
 
 ## About Windows System Images
