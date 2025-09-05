@@ -137,7 +137,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "111-Create_system_image_to_
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `Target_Drives_List` | String | **Required** | Space-separated list of target drive letters (e.g., "D: E: G:") |
 | `Headroom_PCT` | Integer | **30** | Percentage of extra space to reserve (0-500) |
 | `CleanupBeforehand` | Switch | **enabled** | Perform system cleanup before backup |
 | `NoCleanupBeforehand` | Switch | - | Skip system cleanup before backup |
