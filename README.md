@@ -74,7 +74,7 @@ The script performs comprehensive validation of target drives:
 - ✅ **NTFS filesystem** (required for system images)
 - ✅ **Sufficient free space** (C: usage + headroom percentage)
 - ✅ **Drive ready** and mounted
-- ✅ **Not forbidden** (C:, E:, U: are blocked from being target drives by default inside the .ps1 script; hence edit the .ps1 script for your needs)
+- ✅ **Not forbidden** (C: E: U: are blocked from being target drives by default inside the .ps1 script; hence edit the .ps1 script to suit your own hard exclusions if any)
 
 ## Space Calculation
 
@@ -83,7 +83,6 @@ The script estimates backup size using:
 Base Estimate = (C: Used Space - Excluded Files + 2GB Allowance) × 1.10
 Final Required = Base Estimate × (1 + Headroom_PCT/100)
 ```
-
 **Excluded files**: pagefile.sys, hiberfil.sys, swapfile.sys
 
 ## Safety Features
@@ -109,11 +108,11 @@ Final Required = Base Estimate × (1 + Headroom_PCT/100)
    ```batch
    SET "TARGET_DRIVE_LIST=D: E: G:"
    ```
-**NOTE:** Some drives (C:, E:, U:) are auto forbidden from being target drives by default using a 'fixed' parameter inside the .ps1 script; hence edit the .ps1 script to suit your own hard exclusions if any.
+**NOTE:** Some drives (C: E: U:) are auto forbidden from being target drives by default using a 'fixed' parameter inside the .ps1 script; hence edit the .ps1 script to suit your own hard exclusions if any.
 
 3. **Right-click** on your modified `.bat` file and select **"Run as Administrator"**
 
-### Option 2: Direct PowerShell Execution (Run AS Administrator )
+### Option 2: Direct PowerShell Execution (Run As Administrator )
 
 ```powershell
 # This must be Run AS Administrator from a cmd window or Run As
@@ -211,7 +210,7 @@ The script uses structured exit codes:
 
 **Windows Disk Cleanup (`cleammgr`) takes a long time**
 - Yes. Yes it indeed can do. It can even look like it's frozen. Oh well.
-- Two small dialogue windows pop up when it is processing each drive - clicking on one pop-up and then on the other (giving each 'focus' in turn) looks to speed it up a bit).
+- Two small dialogue windows pop up when Windows `cleammgr` is processing each drive - clicking on one pop-up and then on the other (giving each 'focus' in turn) looks to speed it up.
 
 **"Drive not found"**
 - Ensure the target drive letters are correct and drives are connected
