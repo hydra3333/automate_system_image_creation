@@ -26,8 +26,8 @@ cd "%~dp0"
 set "sageset_profile=1"
 
 :: --- If we want to run in Verbose mode, set it here ---
-set "Verbose=-Verbose"
-REM set "Verbose="
+REM set "Verbose=-Verbose"
+set "Verbose="
 
 :: --- If we want to perform cleanups, set it here ---
 REM set "CleanupBeforehand=-CleanupBeforehand"
@@ -46,14 +46,14 @@ set "ps1_path=%~dp0111-Create_system_image_to_drives_RunAs_Admin.ps1"
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------
 
-SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
+REM SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
 REM SET "TARGET_DRIVE_LIST=D:"
 REM SET "TARGET_DRIVE_LIST=E:"
 REM SET "TARGET_DRIVE_LIST=G:"
 REM SET "TARGET_DRIVE_LIST=T:"
 REM SET "TARGET_DRIVE_LIST=I:"
 REM SET "TARGET_DRIVE_LIST=Y:"
-REM SET "TARGET_DRIVE_LIST=G: T:"
+SET "TARGET_DRIVE_LIST=D: G: T:"
 
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------

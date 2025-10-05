@@ -1095,15 +1095,118 @@ function SetSystemRestoreFrequency {
     }
 }
 
+function Test-VSSHealth {
+    <#
+    .SYNOPSIS
+      Check VSS health and trace individual writer states
+    #>
+    Write-Host "Checking VSS health..." -ForegroundColor Cyan
+    # Check VSS service
+    $vss = Get-Service -Name VSS
+    Write-Host "VSS Service Status: $($vss.Status)" -ForegroundColor $(if($vss.Status -eq 'Running'){'Green'}else{'Red'})
+    Trace "VSS Service: Status=$($vss.Status), StartType=$($vss.StartType)"
+    # Get detailed VSS writers information
+    $writersOutput = vssadmin list writers
+    # Parse writer details
+    $writers = @()
+    $currentWriter = $null
+    foreach ($line in $writersOutput -split "`r?`n") {
+        if ($line -match "Writer name: '(.+)'") {
+            if ($currentWriter) {
+                $writers += $currentWriter
+            }
+            $currentWriter = @{
+                Name = $matches[1]
+                State = $null
+                LastError = $null
+            }
+        }
+        elseif ($line -match "State: \[(\d+)\] (.+)" -and $currentWriter) {
+            $currentWriter.State = $matches[2]
+        }
+        elseif ($line -match "Last error: (.+)" -and $currentWriter) {
+            $currentWriter.LastError = $matches[1]
+        }
+    }
+    # Add the last writer
+    if ($currentWriter) {
+        $writers += $currentWriter
+    }
+    # Count and report
+    $totalCount = $writers.Count
+    $stableWriters = $writers | Where-Object { $_.State -eq 'Stable' }
+    $unstableWriters = $writers | Where-Object { $_.State -ne 'Stable' }
+    $stableCount = $stableWriters.Count
+    Write-Host "VSS Writers: $totalCount total, $stableCount stable" -ForegroundColor $(if($totalCount -eq $stableCount){'Green'}else{'Yellow'})
+    # Trace stable writers
+    if ($stableCount -gt 0) {
+        Trace "=== STABLE VSS Writers ($stableCount) ==="
+        foreach ($writer in $stableWriters) {
+            Trace "  [OK] $($writer.Name)"
+        }
+    }
+    # Trace unstable writers with details
+    if ($unstableWriters.Count -gt 0) {
+        Trace "=== UNSTABLE VSS Writers ($($unstableWriters.Count)) ==="
+        foreach ($writer in $unstableWriters) {
+            $errorInfo = if ($writer.LastError) { " | Error: $($writer.LastError)" } else { "" }
+            Trace "  [PROBLEM] $($writer.Name) | State: $($writer.State)$errorInfo"
+            Write-Warning "[PROBLEM] VSS Writer problem: $($writer.Name) - State: $($writer.State)"
+        }
+    }
+    # If writers are problematic, try restarting VSS
+    if ($totalCount -ne $stableCount) {
+        Write-Host "**********************************************************" -ForegroundColor Yellow
+        Write-Host "Some VSS writers are not stable. Restarting VSS service..." -ForegroundColor Yellow
+        Write-Host "**********************************************************" -ForegroundColor Yellow
+        Trace "*************************************************************"
+        Trace "Attempting VSS service restart to recover unstable writers..."
+        Trace "*************************************************************"
+        try {
+            Restart-Service -Name VSS -Force
+            Start-Sleep -Seconds 5
+            # Re-check after restart
+            $writersAfter = vssadmin list writers
+            $stableAfter = ([regex]::Matches($writersAfter, "State: \[1\] Stable")).Count
+            Trace "After VSS restart: $stableAfter stable writers (was $stableCount)"
+            if ($stableAfter -gt $stableCount) {
+                Write-Host "***************************************************************" -ForegroundColor Yellow
+                Write-Host "VSS restart improved writer health: $stableCount -> $stableAfter stable" -ForegroundColor Green
+                Write-Host "***************************************************************" -ForegroundColor Yellow
+                Trace "***************************************************************"
+                Trace "VSS restart improved writer health: $stableCount -> $stableAfter stable"
+                Trace "***************************************************************"
+            } else {
+                Write-Warning "*******************************************************************************"
+                Write-Warning "[PROBLEM] VSS restart did not improve writer health (still $stableAfter stable)"
+                Write-Warning "*******************************************************************************"
+                Trace "*******************************************************************************"
+                Trace "[PROBLEM] VSS restart did not improve writer health (still $stableAfter stable)"
+                Trace "*******************************************************************************"
+            }
+        } catch {
+            Write-Warning "*********************************************************************"
+            Write-Warning "Failed to restart VSS service: $($_.Exception.Message)"
+            Write-Warning "*********************************************************************"
+            Trace "*********************************************************************"
+            Trace "Failed to restart VSS service: $($_.Exception.Message)"
+            Trace "*********************************************************************"
+        }
+    } else {
+        Trace "All VSS writers are stable - no action needed"
+        WriteHost "All VSS writers are stable - no action needed" -ForegroundColor Green
+    }
+    return $true
+}
+
 function create_restore_point_on_C {
     <#
     .SYNOPSIS
-      Creates a System Restore Point on drive C:
-
+      Creates a System Restore Point on drive C: with timeout protection
     .OUTPUTS
-      $true on success (exit code 0), otherwise $false.
+      $true on success, otherwise $false.
     #>
-    Write-Host 'Creating a System Restore Point on drive C:  ...' -ForegroundColor Cyan
+    Write-Host 'Creating a System Restore Point on drive C:...' -ForegroundColor Cyan
     # Check that the cmdlet exists (on some editions it may be missing)
     try {
         $enableCmd = Get-Command -Name "Checkpoint-Computer" -ErrorAction Stop
@@ -1118,20 +1221,71 @@ function create_restore_point_on_C {
         Write-Warning ("WARNING ONLY: Could not (re)enable System Protection on drive C: : {0}" -f $($_.Exception.Message))
         # not fatal — continue, Checkpoint-Computer will still tell us if it fails
     }
-    # Create the restore point
-    $return_code = $true
+    # Before attempting to create a restore point, check the health of VSS
+    $return_status = Test-VSSHealth
+    # ----------
+    # Method 1: Try with timeout using Start-Job
+    $return_code = $false
+    $timeoutSeconds = 120  # 2 minutes timeout
     try {
-        Trace ("Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'")
-        Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'
-        Start-Sleep -Seconds 3
-        Write-Host 'Created System Restore Point on drive C:' -ForegroundColor Green
+        Write-Host "Attempting restore point creation (timeout: $timeoutSeconds seconds)..." -ForegroundColor White
+        Trace ("Executing Job BLOCK: Start-Job -ScriptBlock { Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS' }")
+        $job = Start-Job -ScriptBlock {
+            Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+        }
+        Trace ("Waiting for completion of Job BLOCK: Checkpoint-Computer -Description 'Scripted Restore Point' -RestorePointType 'MODIFY_SETTINGS'")
+        $completed = Wait-Job -Job $job -Timeout $timeoutSeconds
+        if ($completed) {
+            $result = Receive-Job -Job $job -ErrorAction Stop
+            Remove-Job -Job $job -Force
+            Write-Host 'Created System Restore Point on drive C:' -ForegroundColor Green
+            $return_code = $true
+        } else {
+            # Timeout occurred
+            # ----------
+            # Method 2: Use WMI as fallback
+            Write-Warning "Checkpoint-Computer Method 1 failed : timed out after $timeoutSeconds seconds."
+            Write-Warning "Trying alternative Method 2 'Use WMI as fallback'"
+            Remove-Job -Job $job -Force
+            # Method 2: Use WMI as fallback
+            $return_code = Create-RestorePoint-WMI
+        }
     } catch {
-        Write-Warning ("WARNING ONLY: Failed to create System Restore Point on drive C: : {0}" -f $($_.Exception.Message))
-        $return_code = $false
+        # ----------
+        # Method 2: Use WMI as fallback
+        Write-Warning "Checkpoint-Computer Method 1 failed: $($_.Exception.Message)"
+        Write-Warning "Trying alternative Method 2 'Use WMI as fallback'"
+        Remove-Job -Job $job -Force
+        $return_code = Create-RestorePoint-WMI
     }
     Write-Host 'Creation of System Restore Point on drive C: completed.' -ForegroundColor Cyan
     Check-Abort
     return $return_code
+}
+
+function Create-RestorePoint-WMI {
+    <#
+    .SYNOPSIS
+      Alternative method using WMI to create restore point
+    #>
+    try {
+        Write-Host "Creating Method 2 restore point via WMI..." -ForegroundColor White
+        # Get SystemRestore class
+        $SysRestore = Get-WmiObject -Namespace "root\default" -Class SystemRestore -ErrorAction Stop
+        # Create restore point (returns 0 on success)
+        $result = $SysRestore.CreateRestorePoint("Scripted Restore Point", 0, 100)
+        if ($result.ReturnValue -eq 0) {
+            Write-Host "Successfully created restore point via Method 2 WMI" -ForegroundColor Green
+            Start-Sleep -Seconds 3
+            return $true
+        } else {
+            Write-Warning "ERROR: Method 2 WMI CreateRestorePoint returned code: $($result.ReturnValue)"
+            return $false
+        }
+    } catch {
+        Write-Warning "ERROR: Method 2 WMI method also failed: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function create_system_image_backups {
@@ -1308,7 +1462,9 @@ $PreviousVal_minutes = $result_object.PreviousVal_minutes
 $NewVal_minutes      = $result_object.NewVal_minutes
 Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $result_object)
 #
+#$return_status = list_current_restore_points_on_C
 $return_status = create_restore_point_on_C
+#$return_status = list_current_restore_points_on_C
 #
 $result_object = SetSystemRestoreFrequency -Action Set -Minutes $PreviousVal_minutes
 $return_status = $result_object.ReturnCode
