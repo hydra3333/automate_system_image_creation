@@ -1194,7 +1194,7 @@ function Test-VSSHealth {
         }
     } else {
         Trace "All VSS writers are stable - no action needed"
-        WriteHost "All VSS writers are stable - no action needed" -ForegroundColor Green
+        Write-Host "All VSS writers are stable - no action needed" -ForegroundColor Green
     }
     return $true
 }
