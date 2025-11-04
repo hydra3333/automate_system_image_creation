@@ -46,14 +46,13 @@ set "ps1_path=%~dp0111-Create_system_image_to_drives_RunAs_Admin.ps1"
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------
 
-SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
+REM SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
 REM SET "TARGET_DRIVE_LIST=D:"
 REM SET "TARGET_DRIVE_LIST=E:"
 REM SET "TARGET_DRIVE_LIST=G:"
-REM SET "TARGET_DRIVE_LIST=T:"
+SET "TARGET_DRIVE_LIST=T:"
 REM SET "TARGET_DRIVE_LIST=I:"
 REM SET "TARGET_DRIVE_LIST=Y:"
-REM SET "TARGET_DRIVE_LIST=G: T:"
 
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------
