@@ -118,6 +118,12 @@ $Forbidden_Target_Drives = @('C:', 'E:', 'U:')
 $script:UserCancelled = $false
 
 # ================================ Helpers ==================================
+
+Function do_pause {
+    Write-Host "Press any key to continue..."
+    $x = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
 function Write-Header([string]$Text) {
     Write-Host ('=' * 78) -ForegroundColor DarkGray
     Write-Host $Text -ForegroundColor Cyan
@@ -380,6 +386,132 @@ function Test-FreeSpaceForImage {
 }
 
 # ========================== Operational =========================
+function Allow_publishing_of_User_Activities {
+    <#  Function: Allow_publishing_of_User_Activities
+        Purpose: Enable or disable Windows User Activity logging via Group Policy registry
+        Parameter: [bool] $EnableFlag — if $true, explicitly enable activities; if $false, explicitly disable
+        Returns: [bool] $return_code — $true if all registry writes succeed, $false otherwise
+        
+        According to Microsoft’s Policy CSP for Privacy, the registry value UploadUserActivities is under:
+            HKLM\SOFTWARE\Policies\Microsoft\Windows\System 
+        Microsoft Learn
+            The “Disable Activity History” tweak in Winutil also sets:
+                EnableActivityFeed = 0
+                PublishUserActivities = 0
+                UploadUserActivities = 0
+            under the same path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\System 
+        christitustech.github.io
+            Disabling “Allow publishing of User Activities” via Group Policy corresponds to the same key PublishUserActivities = 0 in that path. 
+
+    Windows 11 (25H2) is actively logging activity into ActivitiesCache.db as at 2025.11.20.
+    Your directory listing shows:
+        ActivitiesCache.db is ~11.8 MB, which is quite large for this database.
+    The .db-wal and .db-shm files have timestamps from 19/11/2025 at 2:33–2:38 PM, 
+    meaning the database was actively updated today, minutes before you ran the directory listing.
+    This confirms Windows is still writing timeline/activity events, even in 25H2.
+    The presence and fresh timestamps confirm ongoing writes.
+    Important: The size and recency show logging is active, not legacy
+    Some forensic researchers reported that in Win11 the DB remains but no new entries appear.
+    Your system clearly contradicts that - it is updated in 2025.
+    That means some Windows services/features are still feeding data into it.
+    
+    So despite Microsoft removing the old “Timeline” UI, the underlying logging mechanism
+    (“User Activity” database) still exists and still logs, unless explicitly disabled.
+    
+    What the files mean
+        ActivitiesCache.db
+            This is the primary SQLite database containing the activity entries.
+            11 MB is large enough to contain hundreds or thousands of events such as:
+                Executable launches (apps opened)
+                Document or media files accessed
+                Clipboard and share events
+                Some browser URL-open events (depending on app integration)
+                System-level “user engagement” metadata
+                Possibly activity sync metadata
+        ActivitiesCache.db-wal
+            Write-ahead log = actively recording new entries right now.
+        ActivitiesCache.db-shm
+            Shared‐memory file = used by the SQLite engine while writing/locking.
+    
+        Windows 11 quietly logs a lot of your activity in ActivitiesCache.db - is TRUE on your system.
+        It is not necessarily every file, every app, every web page... but it is certainly logging more than people expect.
+    
+    Chosen: Option B - Disable via Group Policy
+        This is the most reliable for Windows 10/11 Pro.
+        Enable:
+            Local Computer Policy -> Computer Configuration -> Administrative Templates -> System -> OS Policies -> Allow publishing of User Activities -> Disabled
+        And also disable:
+            “Allow upload of User Activities”
+            “Enable Activity Feed”
+    
+        Allow publishing of User Activities → Disabled
+        Allow upload of User Activities → Disabled
+        Enable Activity Feed → Disabled
+        Equivalent registry modifications using PowerShell:
+            New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Force | Out-Null
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -Value 0 -Type DWord
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "UploadUserActivities" -Value 0 -Type DWord
+            Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableActivityFeed" 
+    #>
+    param (
+        [bool] $EnableFlag
+    )
+    # High-level status message
+    if ($EnableFlag) {
+        Write-Host "Enabling Windows Activity Logging (PublishUserActivities, UploadUserActivities, EnableActivityFeed) via registry policy." -ForegroundColor Cyan
+    }
+    else {
+        Write-Host "Disabling Windows Activity Logging (PublishUserActivities, UploadUserActivities, EnableActivityFeed) via registry policy." -ForegroundColor Cyan
+    }
+    $return_code = $true
+    # Define registry path for policy keys
+    $policyKeyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System"
+    # Ensure the registry key exists
+    try {
+        if (-not (Test-Path -Path $policyKeyPath)) {
+            Write-Host "Registry path '$policyKeyPath' does not exist. Creating it." -ForegroundColor Green
+            New-Item -Path $policyKeyPath -Force | Out-Null
+        }
+        else {
+            Trace "Registry path '$policyKeyPath' already exists, will use it."
+        }
+    }
+    catch {
+        Write-Warning "ERROR: Failed to create or access registry path '$policyKeyPath', nothing done. Exception: $_" 
+        $return_code = $false
+    }
+    if ($return_code) {
+        # Prepare the values to write; 0=Disable, 1=Enable
+        $values = @{
+            "PublishUserActivities" = if ($EnableFlag) { [int] 1 } else { [int] 0 }
+            "UploadUserActivities"  = if ($EnableFlag) { [int] 1 } else { [int] 0 }
+            "EnableActivityFeed"    = if ($EnableFlag) { [int] 1 } else { [int] 0 }
+        }
+        # Write each DWORD value
+        foreach ($name in $values.Keys) {
+            $data = $values[$name]
+            try {
+                Trace "Setting registry value '$name' = $data (DWORD) in $policyKeyPath"
+                Set-ItemProperty -Path $policyKeyPath -Name $name -Value $data -Type DWord -Force
+            }
+            catch {
+                Write-Warning "ERROR: Failed to set registry value '$name' to $data in $policyKeyPath. Exception: $_"
+                $return_code = $false
+            }
+        }
+    }
+    # Summary / final status
+    if ($return_code) {
+        $enabled_or_disabled = if ($EnableFlag) { "enabled" } else { "disabled" }
+        Write-Host "Successfully $enabled_or_disabled Windows Activity Logging via registry policy." -ForegroundColor Green
+    }
+    else {
+        Write-Warning "One or more registry reads/writes failed. Specified Activity Logging policy may not be fully applied."
+        Trace ("Allow_publishing_of_User_Activities completed with status: {0}" -f $return_code)
+    }
+    return $return_code
+}
+
 function cleanup_c_windows_temp {
     <#
       .SYNOPSIS
@@ -436,11 +568,15 @@ function cleanup_c_temp_for_every_user {
                 # Get item count and size before cleanup (for reporting)
                 $listing = Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue
                 $itemCount = $listing.Count
-                $beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
+                #$beforeSize = ($listing | Measure-Object -Property Length -Sum).Sum / 1MB
+                $filesBefore = Get-ChildItem $tempPath -Recurse -Force -File -ErrorAction SilentlyContinue
+                $beforeSize  = ($filesBefore | Measure-Object -Property Length -Sum).Sum / 1MB
                 Write-Host "User: $userName Folder: $tempPath\* ($('{0:N1}' -f $itemCount) items) ($('{0:N1}' -f $beforeSize) MB) before Cleaning " -NoNewline
                 Trace ("Remove-Item `"$tempPath\*`" -Recurse -Force -ErrorAction SilentlyContinue")
                 Remove-Item "$tempPath\*" -Recurse -Force -ErrorAction SilentlyContinue
-                $afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+                #$afterSize = (Get-ChildItem $tempPath -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
+                $afterFiles = Get-ChildItem $tempPath -Recurse -Force -File -ErrorAction SilentlyContinue
+                $afterSize  = ($afterFiles | Measure-Object -Property Length -Sum).Sum / 1MB
                 $freed = $beforeSize - $afterSize
                 Write-Host "  Cleaned ($('{0:N1}' -f $freed) MB freed)" -ForegroundColor Green
                 $return_code = $true
@@ -1331,6 +1467,7 @@ function create_system_image_backups {
 Write-Header ("Starting process. Target Drives: '{0}'  Headroom: {1}%" -f $Target_Drives_List, $Headroom_PCT)
 
 if ($Debug) {
+    Dump-Object $PSVersionTable "PSVersionTable"
     Dump-Object $PSBoundParameters "PSBoundParameters"
 }
 
@@ -1438,12 +1575,34 @@ Write-Host ''
 
 Check-Abort
 
+# Disable Windows Activity Logging via Global Policy registry keys for Win10/Win11
+$return_status = Allow_publishing_of_User_Activities($false)
+if (-not $return_status) {
+    Write-Warning "WARNING: Could not disable Windows Activity Logging."
+}
+
+Check-Abort
+
 $return_status = enable_system_restore_protection_on_C
+
+Check-Abort
+
 $return_status = resize_shadow_storage_limit_on_C "100"
+
+Check-Abort
 
 if ($DoPurgeRestorePointsBeforehand) {
     $return_status = PurgeRestorePoints_on_C
+    Write-Host "List of Restore points on C drive after purge:"
+    $return_status = list_current_restore_points_on_C
 }
+else {
+    Write-Host "Not purging Restore Points on C drive, purging not requested: PurgeRestorePoints=$PurgeRestorePoints NoPurgeRestorePoints=$NoPurgeRestorePoints DoPurgeRestorePointsBeforehand=$DoPurgeRestorePointsBeforehand"
+}
+
+Check-Abort
+
+#do_pause
 
 if ($DoCleanupBeforehand) {
     $return_status = cleanup_c_windows_temp
@@ -1464,15 +1623,13 @@ Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $
 #
 #$return_status = list_current_restore_points_on_C
 $return_status = create_restore_point_on_C
-#$return_status = list_current_restore_points_on_C
+$return_status = list_current_restore_points_on_C
 #
 $result_object = SetSystemRestoreFrequency -Action Set -Minutes $PreviousVal_minutes
 $return_status = $result_object.ReturnCode
 $PreviousVal_minutes_reset = $result_object.PreviousVal_minutes
 Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $result_object)
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-$return_status = list_current_restore_points_on_C
 
 $return_status = create_system_image_backups $ValidTargetDrive_list
 
