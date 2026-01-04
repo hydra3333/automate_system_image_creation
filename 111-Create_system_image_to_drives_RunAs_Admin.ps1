@@ -1601,7 +1601,6 @@ else {
 }
 
 Check-Abort
-
 #do_pause
 
 if ($DoCleanupBeforehand) {
@@ -1612,6 +1611,21 @@ if ($DoCleanupBeforehand) {
     #   run_disk_cleanup_using_cleanmgr_profile   -RequireConfiguredProfile   -Verbose
     $return_status = run_disk_cleanup_using_cleanmgr_profile -SageRunId $sageset_profile -MeasureDrives @(@('C:') +  $ValidTargetDrive_list)
 }
+
+Check-Abort
+#do_pause
+
+if ($DoPurgeRestorePointsBeforehand) {
+    $return_status = PurgeRestorePoints_on_C
+    Write-Host "List of Restore points on C drive after purge:"
+    $return_status = list_current_restore_points_on_C
+}
+else {
+    Write-Host "Not purging Restore Points on C drive, purging not requested: PurgeRestorePoints=$PurgeRestorePoints NoPurgeRestorePoints=$NoPurgeRestorePoints DoPurgeRestorePointsBeforehand=$DoPurgeRestorePointsBeforehand"
+}
+
+Check-Abort
+#do_pause
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Temporarily Set/reset the value of microsoft enforced minutes between creating consecutive System Restore Points
