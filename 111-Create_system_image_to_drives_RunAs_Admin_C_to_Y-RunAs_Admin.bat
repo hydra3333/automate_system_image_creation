@@ -22,6 +22,23 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
+REM ******************************************************************************
+REM Set this process priority to AboveNormal using the common priority_lib.bat
+REM set "priority_lib=%~dp0priority_lib.bat"
+set "priority_lib=C:\000-Essential-tasks\priority_lib.bat"
+echo Process priority before setting: 
+call "!priority_lib!" :show_priority_of_local_process
+call "!priority_lib!" :ensure_minimum_priority_of_local_process AboveNormal
+echo Process priority after setting: 
+call "!priority_lib!" :show_priority_of_local_process
+REM ******************************************************************************
+
+REM ******************************************************************************
+REM Prevent process from sleeping using the common StayAwake_lib.bat
+set "StayAwake_lib=C:\000-Essential-tasks\StayAwake_lib.bat"
+call "!StayAwake_lib!" :start_StayAwake
+REM ******************************************************************************
+
 cd "%~dp0"
 set "sageset_profile=1"
 
@@ -59,6 +76,11 @@ REM ----------------------------------------------------------------------------
 
 echo powershell -NoProfile -ExecutionPolicy Bypass -File "%ps1_path%" -Target_Drives_List "%TARGET_DRIVE_LIST%" %Headroom_PCT% %CleanupBeforehand% %PurgeRestorePoints% %Verbose%
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ps1_path%" -Target_Drives_List "%TARGET_DRIVE_LIST%" %Headroom_PCT% %CleanupBeforehand% %PurgeRestorePoints% %Verbose%
+
+REM ******************************************************************************
+REM Allow process from sleeping using the common StayAwake_lib.bat
+call "!StayAwake_lib!" :kill_StayAwake
+REM ******************************************************************************
 
 pause
 exit

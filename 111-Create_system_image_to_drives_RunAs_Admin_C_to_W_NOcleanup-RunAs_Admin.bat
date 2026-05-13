@@ -69,8 +69,9 @@ REM SET "TARGET_DRIVE_LIST=E:"
 REM SET "TARGET_DRIVE_LIST=G:"
 REM SET "TARGET_DRIVE_LIST=T:"
 REM SET "TARGET_DRIVE_LIST=I:"
+SET "TARGET_DRIVE_LIST=W:"
 REM SET "TARGET_DRIVE_LIST=Y:"
-SET "TARGET_DRIVE_LIST=G: T:"
+REM SET "TARGET_DRIVE_LIST=G: T:"
 
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------

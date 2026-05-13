@@ -39,10 +39,6 @@ param(
     [switch]$CleanupBeforehand,
     [switch]$NoCleanupBeforehand,
 
-    [Parameter(Mandatory = $false)]
-    [ValidateRange(0,5)]
-    [int] $Max_prior_system_image_backups_to_keep = 2,
-
     [string] $AbortFile = "$env:TEMP\ABORT_BACKUP.flag"
 )
 
@@ -1612,113 +1608,349 @@ function Create-RestorePoint-WMI {
     }
 }
 
+function PruneOldSystemImageBackupsFromTargetDrives {
+    <#
+    .SYNOPSIS
+      Prune old Windows "system image" backups on each target drive.
+    .PARAMETER TargetDrives
+      Normalized target drives in canonical form (e.g. 'D:', 'G:', 'Y:').
+    .PARAMETER RetainCount
+      Number of most recent system image backups to keep on each drive.
+    .PARAMETER WhatIf
+      If supplied, runs pruning in preview mode (nothing deleted).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [object] $TargetDrives,
+
+        [Parameter(Mandatory)]
+        [ValidateRange(0, 1000)]
+        [int] $RetainCount,
+
+        [Parameter()]
+        [switch] $WhatIf
+    )
+
+    Trace ("Prune System Image Backups on target drives: TargetDrives={0} RetainCount={1} WhatIf={2}" -f ($TargetDrives -join ","), $RetainCount, [bool]$WhatIf)
+    Write-Host ("Prune System Image Backups on target drives: {0}" -f ($TargetDrives -join ",")) -ForegroundColor Cyan
+
+    $results    = @()
+    $anyFailure = $false
+
+    foreach ($TargetDrive in @($TargetDrives)) {
+        Trace ("Starting prune on TargetDrive={0}" -f $TargetDrive)
+        Write-Host ("Starting Prune System Image Backups on {0} ..." -f $TargetDrive) -ForegroundColor Cyan
+        try {
+            if ($WhatIf) {
+                $result = PruneOldSystemImageBackupsFromDisk -Drive $TargetDrive -RetainCount $RetainCount -WhatIf
+            } else {
+                $result = PruneOldSystemImageBackupsFromDisk -Drive $TargetDrive -RetainCount $RetainCount
+            }
+            $results += $result
+            if ($result.return_status -ne 0) {
+                $anyFailure = $true
+                Trace ("ERROR: Pruning failed on {0}: {1}" -f $TargetDrive, $result.return_msg)
+                Write-Error ("Backup prune failed on {0}: {1}" -f $TargetDrive, $result.return_msg)
+                continue
+            }
+
+            Write-Host ("System Image Backups pruned successfully on {0}." -f $TargetDrive) -ForegroundColor White
+            Write-Host ("  Found     : {0}" -f $result.Found)
+            Write-Host ("  Retained  : {0}" -f $result.Retained)
+            Write-Host ("  Deleted   : {0}" -f $result.Deleted)
+            $gbDeleted = if ($result.BytesDeleted) { $result.BytesDeleted / 1GB } else { 0 }
+            Write-Host ("  GB Deleted: {0:N2}" -f $gbDeleted)
+            Trace ("Finished prune on {0}. Found={1} Retained={2} Deleted={3} GBDeleted={4:N2}" `
+                -f $TargetDrive, $result.Found, $result.Retained, $result.Deleted, $gbDeleted)
+            Write-Host ("Finished Prune System Image Backups on {0} ..." -f $TargetDrive) -ForegroundColor White
+        }
+        catch {
+            $anyFailure = $true
+            Trace ("EXCEPTION: Pruning System Image Backups on {0}: {1}" -f $TargetDrive, $_.Exception.Message)
+            Write-Error ("ERROR: Pruning System Image Backups on {0} Failed: {1}" -f $TargetDrive, $_.Exception.Message)
+            $results += [pscustomobject]@{
+                return_status   = 1
+                return_msg      = ("Exception: {0}" -f $_.Exception.Message)
+                Drive           = $TargetDrive
+                ComputerName    = $env:COMPUTERNAME
+                Found           = 0
+                Retained        = 0
+                Deleted         = 0
+                BytesDeleted    = 0
+                Path            = ""
+                RetainedFolders = @()
+                DeletedFolders  = @()
+            }
+        }
+    }
+    if ($anyFailure) {
+        return [pscustomobject]@{
+            return_status     = 1
+            return_msg        = "One or more target drives failed Pruning System Image Backups."
+            results_per_drive = $results
+        }
+    }
+    return [pscustomobject]@{
+        return_status     = 0
+        return_msg        = "Successfully pruned system image backups on all target drives."
+        results_per_drive = $results
+    }
+}
+
+function PruneOldSystemImageBackupsFromDisk {
+    <#
+    .SYNOPSIS
+      Purge older Windows "system image" backups (WindowsImageBackup) on a given drive,
+      retaining only the N most recent.
+    .DESCRIPTION
+      Targets folders of the form:
+        <Drive>:\WindowsImageBackup\<ComputerName>\Backup YYYY-MM-DD HHMMSS
+      Keeps the newest $RetainCount backups and deletes the rest.
+      Notes:
+      - Control Panel "Create a system image" backups are full images, not diff/incremental.
+      - Deleting older "Backup ..." folders does not break newer ones.
+    .PARAMETER Drive
+      The drive root to inspect (e.g. "Y:" or "Y:\").
+    .PARAMETER RetainCount
+      Number of most recent backups to keep. 0 means delete all backups found.
+    .PARAMETER WhatIf
+      Auto added by SupportsShouldProcess.
+      Nothing is deleted. Your code still runs. You see exactly what would happen.
+    .OUTPUTS
+      PSCustomObject summary including:
+        return_status: 0 success, 1 failure
+        return_msg:    status message
+        plus counts and folder lists.
+    .EXAMPLES
+      PruneOldSystemImageBackupsFromDisk -Drive "Y:" -RetainCount 1 -WhatIf
+      PruneOldSystemImageBackupsFromDisk -Drive "Y:" -RetainCount 1
+      PruneOldSystemImageBackupsFromDisk -Drive "Y:" -RetainCount 2 
+      $result = Remove-OldSystemImageBackupsFrom_Disk -Drive "Y:" -RetainCount 2
+      if ($result.return_status -ne 0) {
+          Write-Error "Backup prune failed: $($result.return_msg)"
+          return
+      }
+      Write-Host "System Image Backups pruned successfully."
+      Write-Host "  Found     : $($result.Found)"
+      Write-Host "  Retained  : $($result.Retained)"
+      Write-Host "  Deleted   : $($result.Deleted)"
+      $gbDeleted = if ($result.BytesDeleted) { $result.BytesDeleted / 1GB } else { 0 }
+      Write-Host "  GB Deleted: {0:N2}" -f $gbDeleted)
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Drive,
+
+        [Parameter(Mandatory)]
+        [ValidateRange(0, 1000)]
+        [int] $RetainCount
+    )
+
+    # Helper: consistent return object builder
+    function _ret {
+        param(
+            [int]    $status,
+            [string] $msg,
+            [string] $driveRoot,
+            [string] $computerName,
+            [string] $basePath,
+            [int]    $found = 0,
+            [int]    $retained = 0,
+            [int]    $deleted = 0,
+            [int64]  $bytesDeleted = 0,
+            [object] $retainedFolders = @(),
+            [object] $deletedFolders  = @()
+        )
+        return [pscustomobject]@{
+            return_status   = $status
+            return_msg      = $msg
+            Drive           = $driveRoot
+            ComputerName    = $computerName
+            Found           = $found
+            Retained        = $retained
+            Deleted         = $deleted
+            BytesDeleted    = $bytesDeleted
+            Path            = $basePath
+            RetainedFolders = $retainedFolders
+            DeletedFolders  = $deletedFolders
+        }
+    }
+
+    $computerName = $env:COMPUTERNAME
+
+    # Normalize drive input to eg "Y:\"
+    $driveRoot = ('' + $Drive).Trim()
+    #$driveRoot = if ($null -ne $Drive) { $Drive.Trim() } else { "" }
+    if ($driveRoot.Length -eq 2 -and $driveRoot[1] -eq ':') { $driveRoot += '\' }
+
+    $basePath = $null
+    try {
+        if (-not ($driveRoot.Length -eq 3 -and $driveRoot[1] -eq ':' -and $driveRoot[2] -eq '\')) {
+            $basePath = ""
+            return _ret 1 "Drive must look like 'Y:' or 'Y:\'. Received: '$Drive'" $driveRoot $computerName $basePath
+        }
+        if (-not (Test-Path -LiteralPath $driveRoot)) {
+            $basePath = ""
+            return _ret 1 "Drive root not found: $driveRoot" $driveRoot $computerName $basePath
+        }
+        $basePath = Join-Path $driveRoot ("WindowsImageBackup\{0}" -f $computerName)
+        if (-not (Test-Path -LiteralPath $basePath)) {
+            return _ret 0 "No System Backup purging: No WindowsImageBackup folder found for computer '$computerName' at: $basePath" `
+                $driveRoot $computerName $basePath 0 0 0 0 @() @()
+        }
+
+        # Collect "Backup yyyy-mm-dd hhmmss" directories
+        $backupDirs = @(Get-ChildItem -LiteralPath $basePath -Directory -ErrorAction Stop | Where-Object { $_.Name -like 'Backup *' })
+        if ($backupDirs.Count -eq 0) {
+            return _ret 0 "No 'Backup ...' folders found under: $basePath (nothing to delete)." `
+                $driveRoot $computerName $basePath 0 0 0 0 @() @()
+        }
+
+        # Parse timestamp from folder name; fallback to LastWriteTime if parsing fails.
+        $parsed = foreach ($d in $backupDirs) {
+            $dt = $null
+            if ($d.Name -match '^Backup\s+(\d{4}-\d{2}-\d{2})\s+(\d{6})$') {
+                try {
+                    $datePart = $matches[1]
+                    $timePart = $matches[2]
+                    $dt = [datetime]::ParseExact(
+                        "$datePart $timePart",
+                        "yyyy-MM-dd HHmmss",
+                        [Globalization.CultureInfo]::InvariantCulture
+                    )
+                } catch {
+                    $dt = $null
+                }
+            }
+            [pscustomobject]@{
+                Dir        = $d
+                SortTime   = $(if ($dt) { $dt } else { $d.LastWriteTime })
+                ParsedTime = $dt
+            }
+        }
+
+        $sorted   = @($parsed | Sort-Object SortTime -Descending)
+        $toKeep   = if ($RetainCount -gt 0) { @($sorted | Select-Object -First $RetainCount) } else { @() }
+        $toDelete = if ($RetainCount -ge $sorted.Count) { @() } else { @($sorted | Select-Object -Skip $RetainCount) }
+
+        $bytesDeleted = 0L
+        $deletedCount = 0
+
+        foreach ($item in $toDelete) {
+            $dir = $item.Dir
+            # Best-effort size calculation (can be slow on USB HDDs).
+            try {
+                $size = (Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue |
+                         Measure-Object -Property Length -Sum).Sum
+                if ($null -ne $size) { $bytesDeleted += [int64]$size }
+            } catch {
+                # Ignore size calc failures.
+            }
+
+            if ($PSCmdlet.ShouldProcess($dir.FullName, "Delete system image backup folder")) {
+                try {
+                    Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop
+                    $deletedCount++
+                } catch {
+                    return _ret 1 "Failed to delete '$($dir.FullName)': $($_.Exception.Message)" `
+                        $driveRoot $computerName $basePath $sorted.Count $toKeep.Count $deletedCount $bytesDeleted `
+                        ($toKeep | ForEach-Object { $_.Dir.Name }) `
+                        ($toDelete | ForEach-Object { $_.Dir.Name })
+                }
+            }
+        }
+
+        return _ret 0 "Successfully pruned System Image Backups for computer '$computerName' at: $basePath" `
+            $driveRoot $computerName $basePath $sorted.Count $toKeep.Count $deletedCount $bytesDeleted `
+            ($toKeep | ForEach-Object { $_.Dir.Name }) `
+            ($toDelete | ForEach-Object { $_.Dir.Name })
+    }
+    catch {
+        # No throws to caller; convert to status object.
+        if ($null -eq $basePath) { $basePath = "" }
+        return _ret 1 "Unexpected error: $($_.Exception.Message)" $driveRoot $computerName $basePath
+    }
+}
+
 function create_system_image_backups {
     <#
     .SYNOPSIS
       Create a System Image Backup on each of a set of target drives
 
     .PARAMETER TargetDrives
-      Target drives to create System Image Backups to (e.g. 'D:','G:'). Enforced by ValidateScript on the parameter. 
+      Target drives to create System Image Backups to (e.g. 'D','G').    
 
     .OUTPUTS
       $true on success (exit code 0), otherwise $false.
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateScript({ $_ -match '^[A-Za-z]:$' })]
         [string[]] $TargetDrives
     )
+    
     Trace ("Create a System Image Backup on each of a set of target drives TargetDrives=$TargetDrives")
     Write-Host ("Create a System Image Backup on each of a set of target drives TargetDrives=$TargetDrives") -ForegroundColor Cyan
-    $Win11BackupFolderName = "WindowsImageBackup"
-    $ArchiveDateTimeStringFormat = "yyyyMMdd_HHmmss"
     foreach ($TargetDrive in $TargetDrives) {
         Trace ("INSIDE 'foreach (TargetDrive in TargetDrives)' ... TargetDrive=$TargetDrive TargetDrives=$TargetDrives")
         #-------------------------------------------------------------------------------------------------------------------------
-        # 1. Rename any current system image backup on target drive so we do not auto overwrite it
-        Trace "Starting for $TargetDrive rename any current system image backup so we do not auto overwrite it ..." 
-        Write-Host "Starting for $TargetDrive rename any current system image backup so we do not auto overwrite it ..." -ForegroundColor Cyan
-        $ExistingBackup = Get-Item -Path (Join-Path $TargetDrive $Win11BackupFolderName) -ErrorAction SilentlyContinue
-        if ($ExistingBackup) {
-            Trace "Existing system image backup found. Archiving it based on folder date modified ..."
-            Write-Host "Existing system image backup found. Archiving it based on folder date modified ..." -ForegroundColor Yellow
-            # 1. Get the last modified date and format it
-            $FolderDate = $ExistingBackup.LastWriteTime.ToString("$ArchiveDateTimeStringFormat")
-            $ArchivedName = "$Win11BackupFolderName`_$FolderDate"
-            # Check if a folder with this timestamp already exists to avoid errors
-            if (-not (Test-Path (Join-Path $TargetDrive $ArchivedName))) {
-                Trace ( "Renaming folder $($ExistingBackup.FullName) to $ArchivedName" )
-                Write-Host "Renaming folder $($ExistingBackup.FullName) to $ArchivedName"
-                Rename-Item -Path $ExistingBackup.FullName -NewName $ArchivedName
-                Trace ( "Renamed folder to $ArchivedName" )
-                Write-Host "Renamed folder to $ArchivedName"
-            } else {
-                # Fallback if seconds match perfectly (unlikely but possible)
-                $RandomID = Get-Random -Minimum 0 -Maximum 99999
-                $FallbackName = "$ArchivedName`_dup_$RandomID"
-                Trace ( "Renaming folder $($ExistingBackup.FullName) to fallback $FallbackName" )
-                Write-Host "Renaming folder $($ExistingBackup.FullName) to fallback to $FallbackName"
-                Rename-Item -Path $ExistingBackup.FullName -NewName $FallbackName
-                Trace ( "Renamed folder to fallback $FallbackName" )
-                Write-Host "Renamed folder to fallback to $FallbackName"
+        # don't prune system images in target drives here now, so disable it by testing for $false
+        # disable because natively with local disks, Win11 keeps only newest system image and previous ones are purged at creation
+        if ($false) {
+            Trace ("Starting PRUNING SYSTEM IMAGE BACKUPS on $TargetDrive ...")
+            Write-Host "Starting PRUNING SYSTEM IMAGE BACKUPS on $TargetDrive ..." -ForegroundColor Cyan
+            $pruneResult = PruneOldSystemImageBackupsFromTargetDrives -TargetDrives $TargetDrive -RetainCount 2 -WhatIf
+            Write-Host "RESULTS FOR PRUNING SYSTEM IMAGE BACKUPS:" -ForegroundColor Cyan
+            if ($null -eq $pruneResult -or $null -eq $pruneResult.results_per_drive) {
+                Write-Host "No per-drive results returned." -ForegroundColor Yellow
             }
-        }
-        Trace "Finished for $TargetDrive rename any current system image backup so we do not auto overwrite it ..." 
-        Write-Host "Finished for $TargetDrive rename any current system image backup so we do not auto overwrite it ..." -ForegroundColor Cyan
-        #-------------------------------------------------------------------------------------------------------------------------
-        # 2. Cleanup: Remove oldest archived system image backups if over the limit
-        $OldBackups = Get-ChildItem -Path $TargetDrive -Filter "$Win11BackupFolderName`_*" | Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending
-        if ($OldBackups.Count -gt $Max_prior_system_image_backups_to_keep) {
-            Trace "$($OldBackups.Count) Archived system image backups found. Pruning to keep $Max_prior_system_image_backups_to_keep ..."
-            Write-Host "$($OldBackups.Count) Archived system image backups found. Pruning to keep $Max_prior_system_image_backups_to_keep ..."
-            # Keeps the newest $Max_prior_system_image_backups_to_keep minus 1 (since the live one will be created next)
-            $BackupsToDelete = $OldBackups | Select-Object -Skip ($Max_prior_system_image_backups_to_keep)
-            foreach ($Folder in $BackupsToDelete) {
-                Trace "Removing archived system image backup: $($Folder.FullName)"
-                Write-Host "Removing archived system image backup: $($Folder.FullName)" -ForegroundColor Gray
-                Remove-Item -Path $Folder.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                Trace "Removed archived system image backup"
-                Write-Host "Removed archived system image backup" -ForegroundColor Gray
-            } # End of BackupsToDelete foreach
-            Trace "Finished Pruning to keep $Max_prior_system_image_backups_to_keep archived system image backups..."
-            Write-Host "Finished Pruning to keep $Max_prior_system_image_backups_to_keep archived system image backups..."
-        } else {
-            Trace "$($OldBackups.Count) Archived system image backups found. Nothing Pruned. Keeping max $Max_prior_system_image_backups_to_keep"
-            Write-Host "$($OldBackups.Count) Archived system image backups found. Nothing Pruned. Keeping max $Max_prior_system_image_backups_to_keep"
+            else {
+                foreach ($r in @($pruneResult.results_per_drive)) {
+                    Write-Host ("Drive {0}:" -f $r.Drive) -ForegroundColor Cyan
+                    Write-Host ("  Status   : {0}" -f $(if ($r.return_status -eq 0) { "OK" } else { "FAILED" }))
+                    Write-Host ("  Message  : {0}" -f $r.return_msg)
+                    Write-Host ("  Found    : {0}" -f $r.Found)
+                    Write-Host ("  Retained : {0}" -f $r.Retained)
+                    Write-Host ("  Deleted  : {0}" -f $r.Deleted)
+                    $gbDeleted = if ($r.BytesDeleted) { $r.BytesDeleted / 1GB } else { 0 }
+                    Write-Host ("  GB Deleted: {0:N2}" -f $gbDeleted)
+                    $deletedFolders = @($r.DeletedFolders)
+                    if ($deletedFolders.Count -gt 0) {
+                        Write-Host "  Deleted folders:"
+                        $deletedFolders | ForEach-Object {
+                            Write-Host ("    {0}" -f $_)
+                        }
+                    }
+                }
+            }
+            Trace ("Finished PRUNING SYSTEM IMAGE BACKUPS on $TargetDrive ...")
+            Write-Host "Finished PRUNING SYSTEM IMAGE BACKUPS on $TargetDrive ..." -ForegroundColor Cyan
         }
         #-------------------------------------------------------------------------------------------------------------------------
-        # 3. Perform the System Image Backup of C: onto the target drive
-        Trace ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive)
-        Write-Host ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
+        Write-Host "Starting Create a System Image Backup of C: to $TargetDrive ..." -ForegroundColor Cyan
         try {
+            Trace ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive)
+            Write-Host ("Starting Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
             # Use Priority Wrapper to catch wbengine.exe worker
             Trace "Executing priority wbadmin backup..."
             $process = Invoke-PriorityProcess_v2 -FilePath 'wbadmin.exe' -ArgumentList @('start', 'backup', "-backupTarget:$TargetDrive", '-include:C:', '-allCritical', '-quiet') -WorkerProcessName "wbengine"
             $exitCode = if ($process.ExitCode -ne $null) { $process.ExitCode } else { 0 }
             if ($exitCode -ne 0) {
-                Trace ("ERROR: Create a System Image Backup to {0} Failed with code {1}" -f $TargetDrive, $exitCode)
                 Write-Error ("ERROR: Create a System Image Backup to {0} Failed with code {1}" -f $TargetDrive, $exitCode)
             } else {
-                Trace ("Create a System Image Backup to {0} was successful." -f $TargetDrive)
                 Write-Host ("Create a System Image Backup to {0} was successful." -f $TargetDrive) -ForegroundColor Green
             }
         } catch {
-            Trace ("ERROR: Create a System Image Backup to {0} Failed: {1}" -f $TargetDrive, $_.Exception.Message)
             Write-Error ("ERROR: Create a System Image Backup to {0} Failed: {1}" -f $TargetDrive, $_.Exception.Message)
         }
         Trace ("Finished Create a System Image Backup to {0} ..." -f $TargetDrive)
         Write-Host ("Finished Create a System Image Backup to {0} ..." -f $TargetDrive) -ForegroundColor white
         #-------------------------------------------------------------------------------------------------------------------------
-        # --- 4. Visual Summary of Backups on Drive ---
-        $CurrentInventory = Get-ChildItem -Path $TargetDrive -Filter "$Win11BackupFolderName*" | Where-Object { $_.PSIsContainer } | Sort-Object LastWriteTime -Descending
-        Write-Host "Final Backup Inventory on $TargetDrive`:" -ForegroundColor Yellow
-        foreach ($Item in $CurrentInventory) {
-            $Size = "{0:N2} GB" -f ((Get-ChildItem $Item.FullName -Recurse | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum / 1GB)
-            Write-Host " - $($Item.Name) (Last Modified: $($Item.LastWriteTime) | Approx Size: $Size)" -ForegroundColor Gray
-        } # End of Inventory foreach
-        #-------------------------------------------------------------------------------------------------------------------------
         Check-Abort
-    } # End of TargetDrive foreach
+    }
     return $true
 }
 
@@ -1910,6 +2142,48 @@ $return_status = $result_object.ReturnCode
 $PreviousVal_minutes_reset = $result_object.PreviousVal_minutes
 Trace ("SetSystemRestoreFrequency -Action Set -Minutes 1 result_object={0}" -f $result_object)
 #do_pause
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# don't prune system images in target drives here, only inside the create system image function so disable it by testing for $false
+if ($false) {
+    $pruneResult = PruneOldSystemImageBackupsFromTargetDrives -TargetDrives $ValidTargetDrive_list -RetainCount 2 -WhatIf
+    Write-Host "RESULTS FOR PRUNING SYSTEM IMAGE BACKUPS:" -ForegroundColor Cyan
+    if ($null -eq $pruneResult -or $null -eq $pruneResult.results_per_drive) {
+        Write-Host "No per-drive results returned." -ForegroundColor Yellow
+    }
+    else {
+        foreach ($r in @($pruneResult.results_per_drive)) {
+            Write-Host ("Drive {0}:" -f $r.Drive) -ForegroundColor Cyan
+            Write-Host ("  Status   : {0}" -f $(if ($r.return_status -eq 0) { "OK" } else { "FAILED" }))
+            Write-Host ("  Message  : {0}" -f $r.return_msg)
+            Write-Host ("  Found    : {0}" -f $r.Found)
+            Write-Host ("  Retained : {0}" -f $r.Retained)
+            Write-Host ("  Deleted  : {0}" -f $r.Deleted)
+            $gbDeleted = if ($r.BytesDeleted) { $r.BytesDeleted / 1GB } else { 0 }
+            Write-Host ("  GB Deleted: {0:N2}" -f $gbDeleted)
+            $deletedFolders = @($r.DeletedFolders)
+            if ($deletedFolders.Count -gt 0) {
+                Write-Host "  Deleted folders:"
+                $deletedFolders | ForEach-Object {
+                    Write-Host ("    {0}" -f $_)
+                }
+            }
+            Write-Host ""
+        }
+        $totalFound   = ($pruneResult.results_per_drive | Measure-Object -Property Found        -Sum).Sum
+        $totalDeleted = ($pruneResult.results_per_drive | Measure-Object -Property Deleted      -Sum).Sum
+        $totalBytes   = ($pruneResult.results_per_drive | Measure-Object -Property BytesDeleted -Sum).Sum
+        if ($null -eq $totalFound)   { $totalFound = 0 }
+        if ($null -eq $totalDeleted) { $totalDeleted = 0 }
+        if ($null -eq $totalBytes)   { $totalBytes = 0 }
+        Write-Host "SUMMARY (for all drives) FOR PRUNING SYSTEM IMAGE BACKUPS" -ForegroundColor Green
+        Write-Host ("  Total Found   : {0}" -f $totalFound)
+        Write-Host ("  Total Deleted : {0}" -f $totalDeleted)
+        Write-Host ("  Total GB Freed: {0:N2}" -f ($totalBytes / 1GB))
+        Write-Host ""
+    }
+}
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

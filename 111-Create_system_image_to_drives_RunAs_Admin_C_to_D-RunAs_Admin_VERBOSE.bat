@@ -44,15 +44,15 @@ set "sageset_profile=1"
 
 :: --- If we want to run in Verbose mode, set it here ---
 REM set "Verbose=-Verbose"
-set "Verbose="
+set "Verbose=-Verbose"
 
 :: --- If we want to perform cleanups, set it here ---
-REM set "CleanupBeforehand=-CleanupBeforehand"
-set "CleanupBeforehand=-NoCleanupBeforehand"
+set "CleanupBeforehand=-CleanupBeforehand"
+REM set "CleanupBeforehand=-NoCleanupBeforehand"
 
 :: --- If we want to Purge Restore Points, set it here ---
-REM set "PurgeRestorePoints=-PurgeRestorePoints"
-set "PurgeRestorePoints=-NoPurgeRestorePoints"
+set "PurgeRestorePoints=-PurgeRestorePoints"
+REM set "PurgeRestorePoints=-NoPurgeRestorePoints"
 
 :: --- If we want to set additional disk headroom for the system image target, set it here ---
 REM set "Headroom_PCT=-Headroom_PCT 35"
@@ -64,13 +64,12 @@ REM ----------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------
 
 REM SET "TARGET_DRIVE_LIST=D: E: G: T: I: Y:"
-REM SET "TARGET_DRIVE_LIST=D:"
+SET "TARGET_DRIVE_LIST=D:"
 REM SET "TARGET_DRIVE_LIST=E:"
 REM SET "TARGET_DRIVE_LIST=G:"
 REM SET "TARGET_DRIVE_LIST=T:"
 REM SET "TARGET_DRIVE_LIST=I:"
 REM SET "TARGET_DRIVE_LIST=Y:"
-SET "TARGET_DRIVE_LIST=G: T:"
 
 REM ----------------------------------------------------------------------------------
 REM ----------------------------------------------------------------------------------
@@ -82,6 +81,5 @@ REM ****************************************************************************
 REM Allow process from sleeping using the common StayAwake_lib.bat
 call "!StayAwake_lib!" :kill_StayAwake
 REM ******************************************************************************
-
 pause
 exit
